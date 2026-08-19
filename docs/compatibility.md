@@ -18,7 +18,8 @@
 `dsh-llm`、`dsh-tools`、`dsh-user-approval`、`dsh-user-questions`、
 `dsh-agent-default-model`、`dsh-agent-presets`、`dsh-cmdline`、
 `dsh-commands`、`dsh-compaction`、`dsh-permission-presets`、`dsh-sandbox-policy`、
-`dsh-session-projection`、`dsh-session-stats`、`dsh-skill` 与 `dsh-token-meter`。
+`dsh-session-projection`、`dsh-session-query`、`dsh-session-stats`、`dsh-skill` 与
+`dsh-token-meter`。
 
 rc.7 启动器只会向 ID 为 `agent-presets` 的 Cordis entry 注入发行版自带的
 preset roots，因此 Bundle 使用这个 canonical ID。`dsh-base` 本身没有挂载该
@@ -42,6 +43,19 @@ Session ID 是品牌字符串，交互式会话约定为 `session-${randomUUID()
 包含 `header`、`events`、`seq`、`append()`；退出前调用
 `ctx.sessions.flush(session)`。实时事件是
 `ctx.on('session/event', (session, event) => ...)`。
+
+### 最近会话查询
+
+欢迎页使用 `@deepseek-ai/dsh-session-query@0.1.0-rc.7` 的抽象
+`ctx.sessionQuery` 服务，不直接读取 SQLite 或持久化文件：
+
+- `filterSessions([{ kind: 'cwd', values: [process.cwd()] }], signal)` 返回按创建时间
+  从新到旧排列的逻辑会话记录。
+- UI 排除当前 `sessionId` 后截取前 4 条，再用 `readTitleSnapshots(ids, signal)` 批量
+  读取日志折叠后的标题。
+- 单条标题读取失败会回退为短 Session ID；目录级错误或服务未挂载会成为欢迎页的非致命
+  降级状态。
+- `/new` 与 `/clear` 在新 Agent 建立后重新查询；并发刷新通过 `AbortController` 淘汰旧请求。
 
 rc.7 的核心持久事件为：
 
@@ -90,6 +104,10 @@ raw mode/括号粘贴，`TuiAltScreen` 在备用屏缓冲区差量绘制并提�
 Overlay API 构成界面。
 不使用 Bun-only 的 `@oh-my-pi/pi-tui`。
 
+终端颜色由 `getCapabilities().trueColor` 和 `TERM` 共同选择 True Color、ANSI 256 或
+ANSI 16。布局与图标只使用普通 Unicode，不依赖 Nerd Font。当前仅提供深色语义主题；
+静态 Logo 渐变不会启动定时器或动画。
+
 ## 调研来源
 
 - 本机 `/usr/local/lib/node_modules/@deepseek-ai/dsh` 中的 package.json、导出
@@ -97,4 +115,6 @@ Overlay API 构成界面。
 - `/tmp/dsh-omp-tui-reference/deepseek-harness` 的架构文档与 core/user/bundle 源码。
 - `/tmp/dsh-omp-tui-reference/dsh-tui` 的 Bundle、Agent 生命周期和 Store 设计。
 - `/tmp/dsh-omp-tui-reference/pi` 的 TUI README、终端、Editor 与主屏实现。
-- `/tmp/dsh-omp-tui-reference/oh-my-pi` 仅用于视觉层级、状态线与工具卡片参考。
+- `/tmp/dsh-omp-tui-reference/oh-my-pi`（commit
+  `565d53515b54df32fada2564d1fe9caf1a17b738`）仅用于视觉层级、状态线、欢迎页与
+  工具卡片参考。

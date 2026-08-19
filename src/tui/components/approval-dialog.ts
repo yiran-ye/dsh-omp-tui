@@ -8,8 +8,8 @@ import { renderOverlayFrame } from './overlay-frame.js'
 export class ApprovalDialog implements Component {
   private readonly choices = new SelectList(
     [
-      { value: 'allowed-once', label: 'Allow once', description: '仅允许本次工具调用' },
-      { value: 'rejected', label: 'Reject', description: '拒绝本次工具调用' },
+      { value: 'allowed-once', label: '仅允许一次', description: '仅允许本次工具调用' },
+      { value: 'rejected', label: '拒绝', description: '拒绝本次工具调用' },
     ],
     4,
     selectListTheme,
@@ -36,13 +36,13 @@ export class ApprovalDialog implements Component {
     const bodyWidth = Math.max(1, safeWidth - 4)
     const call = this.interaction.callId === undefined ? '' : theme.dim(` · ${this.interaction.callId}`)
     const body = [
-      ...wrapPlain(`${theme.warning('●')} ${theme.bold(this.interaction.toolName)}${call}`, bodyWidth),
+      ...wrapPlain(`${theme.warning('◆')} ${theme.bold(this.interaction.toolName)}${call}`, bodyWidth),
       ...(this.interaction.reason === undefined ? [] : ['', ...wrapPlain(this.interaction.reason, bodyWidth).map(theme.dim)]),
       '',
       ...this.choices.render(bodyWidth),
       '',
       theme.dim('↑/↓ 选择 · Enter 确认 · Esc 取消'),
     ]
-    return fitLines(renderOverlayFrame('Approval', body, safeWidth), safeWidth)
+    return fitLines(renderOverlayFrame('授权确认', body, safeWidth), safeWidth)
   }
 }

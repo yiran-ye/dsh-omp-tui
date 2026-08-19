@@ -1,7 +1,7 @@
 import { Markdown, type Component } from '@earendil-works/pi-tui'
 import type { UserTranscriptEntry } from '../state.js'
 import { markdownTheme, theme } from '../theme.js'
-import { fitLine, fitLines, indentLines } from './common.js'
+import { fitLines, paintBackground } from './common.js'
 
 export class UserBlock implements Component {
   constructor(private readonly entry: UserTranscriptEntry) {}
@@ -11,13 +11,16 @@ export class UserBlock implements Component {
   render(width: number): string[] {
     const safeWidth = Math.max(1, width)
     if (this.entry.injected) {
-      return [fitLine(theme.dim(`› ${this.entry.text}`), safeWidth)]
+      const source = this.entry.sourceLabel ?? '上下文'
+      return paintBackground([
+        theme.bold(theme.customLabel(`◆ ${source}`)),
+        theme.muted(this.entry.text),
+      ], safeWidth, theme.customBg)
     }
-    const bodyWidth = Math.max(1, safeWidth - 2)
-    const markdown = new Markdown(this.entry.text, 0, 0, markdownTheme)
-    return [
-      fitLine(theme.bold('› You'), safeWidth),
-      ...indentLines(fitLines(markdown.render(bodyWidth), bodyWidth), '  ', safeWidth),
-    ]
+    const markdown = new Markdown(this.entry.text, 1, 1, markdownTheme, {
+      color: theme.text,
+      bgColor: theme.userBg,
+    })
+    return fitLines(markdown.render(safeWidth), safeWidth)
   }
 }

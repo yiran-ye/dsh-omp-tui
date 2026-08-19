@@ -32,6 +32,6 @@ export class HelpDialog implements Component {
       '',
       theme.dim('↑/↓ 滚动 · PgUp/PgDn 翻页 · Esc 关闭'),
     ]
-    return fitLines(renderOverlayFrame('Help', body, safeWidth), safeWidth)
+    return fitLines(renderOverlayFrame('帮助', body, safeWidth), safeWidth)
   }
 }

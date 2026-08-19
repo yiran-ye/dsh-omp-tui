@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-compaction'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-stats'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-token-meter'
@@ -21,6 +22,7 @@ import { createCordisEventSource } from './runtime/agent-session.js'
 import { installHarnessInteractions, type HarnessInteractionInstallation } from './runtime/harness-interactions.js'
 import { InteractionQueue } from './runtime/interaction-queue.js'
 import { createModelCatalog } from './runtime/model-catalog.js'
+import { createRecentSessionCatalog } from './runtime/recent-sessions.js'
 import { formatResumeHint, resolveLaunchProfile } from './runtime/resume-hint.js'
 import { ProcessSafety, assertInteractiveTerminal } from './runtime/terminal-restore.js'
 import { mountTui, type MountedTui } from './tui/mount.js'
@@ -53,6 +55,8 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   let removeCommandChangeListener: (() => void) | undefined
   let removeSkillChangeListener: (() => void) | undefined
   let removeToolChangeListener: (() => void) | undefined
+  let recentSessionsAbort: AbortController | undefined
+  let refreshRecentSessions: (() => Promise<void>) | undefined
   const launchProfile = resolveLaunchProfile()
   let resumeHintPrinted = false
 
@@ -73,6 +77,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     removeCommandChangeListener?.()
     removeSkillChangeListener?.()
     removeToolChangeListener?.()
+    recentSessionsAbort?.abort()
     interactionInstallation?.dispose()
     mounted?.stop()
     void controller?.shutdown().catch(report)
@@ -85,6 +90,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     const llm = ctx.get('llm')
     const commands = ctx.get('commands')
     const skills = ctx.get('skills')
+    const sessionQuery = ctx.get('sessionQuery')
     interactions = new InteractionQueue()
     controller = new AgentController({
       agents: ctx.agents,
@@ -113,15 +119,45 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       agentPresets: presets !== undefined,
     })
     const missing = [
-      ...(interactionInstallation.approvalAvailable ? [] : ['Approval']),
-      ...(interactionInstallation.userQuestionsAvailable ? [] : ['User Questions']),
+      ...(interactionInstallation.approvalAvailable ? [] : ['授权确认']),
+      ...(interactionInstallation.userQuestionsAvailable ? [] : ['用户问题']),
     ]
-    if (missing.length > 0) controller.store.setNotice(`可选服务未挂载：${missing.join('、')}。相关请求将 fail-closed。`)
+    if (missing.length > 0) controller.store.setNotice(`可选服务未挂载：${missing.join('、')}。相关请求将被拒绝处理。`)
 
     await controller.start({
       ...(config.resume === undefined ? {} : { resume: config.resume }),
       ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
     })
+    const recentSessionCatalog = sessionQuery === undefined
+      ? undefined
+      : createRecentSessionCatalog(sessionQuery)
+    refreshRecentSessions = async (): Promise<void> => {
+      recentSessionsAbort?.abort()
+      if (recentSessionCatalog === undefined || controller === undefined) {
+        controller?.store.setRecentSessions({ status: 'unavailable', items: [] })
+        return
+      }
+      const request = new AbortController()
+      recentSessionsAbort = request
+      controller.store.setRecentSessions({ status: 'loading', items: [] })
+      const sessionId = controller.store.getSnapshot().sessionId
+      try {
+        const items = await recentSessionCatalog.list({
+          cwd: process.cwd(),
+          limit: 4,
+          signal: request.signal,
+          ...(sessionId === undefined ? {} : { currentSessionId: sessionId }),
+        })
+        if (request.signal.aborted || recentSessionsAbort !== request) return
+        controller.store.setRecentSessions({ status: 'ready', items })
+      } catch {
+        if (request.signal.aborted || recentSessionsAbort !== request) return
+        controller.store.setRecentSessions({ status: 'error', items: [] })
+      } finally {
+        if (recentSessionsAbort === request) recentSessionsAbort = undefined
+      }
+    }
+    void refreshRecentSessions()
     const commandRegistry = commands === undefined ? undefined : {
       list: () => {
         const agent = controller?.agent
@@ -178,6 +214,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         },
         newSession: async () => {
           await controller?.newSession()
+          await refreshRecentSessions?.()
         },
         shutdown: async () => {
           await controller?.shutdown()

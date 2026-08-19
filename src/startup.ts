@@ -14,7 +14,7 @@ export interface OmpTuiStartupValues {
 export function createStartupCommand(): Command {
   return new Command()
     .name('dsh --profile omp-tui')
-    .description('DeepSeek Harness native OMP-style terminal interface.')
+    .description('DeepSeek Harness 原生 OMP 风格终端界面。')
     .helpOption('-h, --help', 'show this help')
     .option('--resume <session-id>', 'resume a persisted Harness session')
     .option('--agent-preset <preset-id>', 'select an Agent Preset for a new session')

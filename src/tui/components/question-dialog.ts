@@ -70,9 +70,9 @@ export class QuestionDialog implements Component {
     const safeWidth = Math.max(1, width)
     const bodyWidth = Math.max(1, safeWidth - 4)
     const question = this.currentQuestion()
-    if (question === undefined) return renderOverlayFrame('Question', [theme.dim('没有问题。')], safeWidth)
+    if (question === undefined) return renderOverlayFrame('问题', [theme.dim('没有问题。')], safeWidth)
     const progress = `${this.questionIndex + 1}/${this.interaction.questions.length}`
-    const title = question.header === undefined ? `Question ${progress}` : `${question.header} · ${progress}`
+    const title = question.header === undefined ? `问题 ${progress}` : `${question.header} · ${progress}`
     const body: string[] = [
       ...wrapPlain(theme.bold(question.question), bodyWidth),
       ...(question.detail === undefined ? [] : ['', ...wrapPlain(question.detail, bodyWidth).map(theme.dim)]),
@@ -85,12 +85,10 @@ export class QuestionDialog implements Component {
       for (let index = 0; index < choices.length; index++) {
         const choice = choices[index]
         if (choice === undefined) continue
-        const cursor = index === this.cursor ? theme.accent('→') : ' '
-        const checked = choice.kind === 'option' && this.selected.has(choice.label)
-          ? theme.success('[✓]')
-          : question.multiSelect === true && choice.kind === 'option'
-            ? '[ ]'
-            : '   '
+        const cursor = index === this.cursor ? theme.accent('❯') : ' '
+        const checked = question.multiSelect === true && choice.kind === 'option'
+          ? this.selected.has(choice.label) ? theme.success('☑') : '☐'
+          : ' '
         body.push(fitLine(`${cursor} ${checked} ${choice.label}`, bodyWidth))
         if (choice.kind === 'option' && choice.description !== undefined) {
           body.push(fitLine(theme.dim(`      ${choice.description}`), bodyWidth))

@@ -41,11 +41,11 @@ export interface McpToolRegistry {
 export const SLASH_COMMAND_AUTOCOMPLETE_ITEMS = [
   { name: 'help', description: '显示命令和快捷键' },
   { name: 'tools', description: '打开工具详情浏览器' },
-  { name: 'skills', description: '浏览并选择可由用户调用的 Skill' },
+  { name: 'skills', description: '浏览并选择可由用户调用的技能' },
   { name: 'mcp', description: '浏览已连接的 MCP 工具' },
   { name: 'model', description: '显示并切换当前 Agent 可用的模型' },
-  { name: 'clear', description: '创建新 Session（保留输入历史）' },
-  { name: 'new', description: '创建新 Session（/clear 的别名）' },
+  { name: 'clear', description: '创建新会话（保留输入历史）' },
+  { name: 'new', description: '创建新会话（/clear 的别名）' },
   { name: 'retry', description: '重新发送上一条用户任务' },
   { name: 'hotkeys', description: '显示命令和快捷键（/help 的别名）' },
   { name: 'exit', description: '优雅退出' },
@@ -89,7 +89,7 @@ export function mergeSlashCommandAutocompleteItems(
     if (name.length === 0 || /[\s/]/.test(name) || names.has(name)) continue
     items.push({
       name,
-      description: skill.description ?? skill.whenToUse ?? 'Skill',
+      description: skill.description ?? skill.whenToUse ?? '技能',
     })
     names.add(name)
   }
@@ -104,7 +104,7 @@ export function formatHelpText(commands: readonly AutocompleteSlashCommand[]): s
     }),
     '',
     'Enter 提交 · Shift/Alt+Enter 换行 · Ctrl+C 取消/双击退出',
-    'Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭 Overlay/取消命令 · ↑/↓ 历史',
+    'Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭弹窗/取消命令 · ↑/↓ 历史',
   ].join('\n')
 }
 

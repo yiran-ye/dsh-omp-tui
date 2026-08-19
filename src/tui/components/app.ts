@@ -3,9 +3,8 @@ import type { ToolPresenter } from '../../runtime/tool-presentation.js'
 import type { TuiStore } from '../store.js'
 import type { TuiSnapshot } from '../state.js'
 import { theme } from '../theme.js'
-import { wrapPlain } from './common.js'
+import { paintBackground, wrapPlain } from './common.js'
 import { PromptEditor } from './prompt-editor.js'
-import { StatusLine } from './status-line.js'
 import { Transcript } from './transcript.js'
 import { Welcome } from './welcome.js'
 
@@ -40,7 +39,7 @@ export class App extends Container {
     super()
     this.snapshot = store.getSnapshot()
     this.transcript = new Transcript(this.snapshot, tools)
-    this.prompt = new PromptEditor(tui, onSubmit)
+    this.prompt = new PromptEditor(tui, onSubmit, this.snapshot)
     this.addChild(this.prompt)
     this.unsubscribe = store.subscribe((snapshot) => {
       if (!this.followingOutput && snapshot.lifecycle !== 'closing' && snapshot.sessionId === this.snapshot.sessionId) {
@@ -87,15 +86,21 @@ export class App extends Container {
     }
     if (this.snapshot.notice !== undefined) {
       if (lines.length > 0) lines.push('')
-      lines.push(...wrapPlain(`! ${this.snapshot.notice}`, safeWidth).map((line) => theme.warning(line)))
+      lines.push(...paintBackground(
+        wrapPlain(this.snapshot.notice, Math.max(1, safeWidth - 4)).map((line) => theme.warning(`◆ ${line}`)),
+        safeWidth,
+        theme.customBg,
+      ))
     }
     if (this.snapshot.lifecycle === 'closing') {
       if (lines.length > 0) lines.push('')
-      lines.push(theme.dim('Closing session…'))
+      lines.push(theme.dim('正在关闭会话…'))
+    }
+    if (this.snapshot.status === 'running' && this.snapshot.lifecycle === 'active') {
+      if (lines.length > 0) lines.push('')
+      lines.push(...wrapPlain(`${theme.warning('⟳ 正在生成')} ${theme.dim('· Ctrl+C 取消')}`, safeWidth))
     }
     if (lines.length > 0) lines.push('')
-    lines.push(theme.border('─'.repeat(safeWidth)))
-    lines.push(...new StatusLine(this.snapshot).render(safeWidth))
     this.bodyCache = { snapshot: this.snapshot, width: safeWidth, lines }
     return lines
   }
@@ -104,6 +109,7 @@ export class App extends Container {
     this.pendingSnapshot = undefined
     this.snapshot = snapshot
     this.transcript.setSnapshot(snapshot)
+    this.prompt.setSnapshot(snapshot)
     this.invalidate()
     this.tui.requestRender()
   }

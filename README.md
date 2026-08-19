@@ -16,7 +16,7 @@ dsh launcher
    └─ dsh-omp-tui
       ├─ AgentController ── followup / steer / cancel
       ├─ Session Event Log ── replay + live projection
-      └─ TuiAltScreen ── Welcome / Transcript / Status / Editor / Overlay
+      └─ TuiAltScreen ── Welcome / Transcript / Tool Cards / Editor / Overlay
 ```
 
 TUI 与 Harness 服务位于同一个 Cordis 插件进程中。Transcript 的唯一事实源是
@@ -32,6 +32,20 @@ Web Server，也不包含 Web/Browser、JSON-RPC、ACP、独立 Agent Runtime �
 
 `omp-tui` 使用终端备用屏缓冲区：启动后会以干净的全屏 TUI 覆盖此前 shell
 输出；退出时会将最后一帧会话文档输出回主缓冲区，并显示可直接粘贴的恢复命令。
+
+## 界面风格
+
+界面采用接近 Oh My Pi 的深色视觉层级，同时保留 DSH 标识和 DeepSeek 运行时语义：
+
+- 欢迎页使用静态 DSH 渐变 Logo；宽终端显示双栏，窄终端自动切换为单栏。
+- 用户消息、工具状态、错误与通知使用不同的低亮底色；助手正文不再重复显示身份标题。
+- 模型、Preset、权限、队列与运行状态只在有真实数据时显示，并嵌入输入框上边框。
+- 运行时在输入框上方显示可取消提示；所有弹窗使用统一边框、底色和中文操作说明。
+- 颜色按 True Color → ANSI 256 → ANSI 16 自动降级；不依赖 Nerd Font，也不提供浅色主题。
+
+欢迎页会通过 `ctx.sessionQuery` 读取当前工作目录最近的其他会话，排除当前会话并最多显示
+4 条。标题优先使用持久化的 `session/title`，缺少标题时显示短会话 ID；服务未挂载或查询
+失败只会让该区域降级，不会阻断 TUI 启动。创建新会话后会自动刷新列表。
 
 ## 系统要求
 
@@ -93,9 +107,9 @@ dsh --profile omp-tui --agent-preset code
 | Shift+Enter / Alt+Enter | 换行 |
 | Ctrl+C | 运行时取消；空闲空输入连续两次退出 |
 | Ctrl+D | 空闲空输入连续两次退出 |
-| Ctrl+O | 打开/关闭 Tool Detail Overlay |
-| Esc | 关闭 Overlay；交互请求按取消/跳过收敛 |
-| ↑ / ↓ | 输入历史；Overlay 中移动选择 |
+| Ctrl+O | 打开/关闭工具详情弹窗 |
+| Esc | 关闭弹窗；交互请求按取消/跳过收敛 |
+| ↑ / ↓ | 输入历史；弹窗中移动选择 |
 
 ### Slash Commands
 
@@ -192,6 +206,8 @@ Approval 与 User Questions 共用一个 FIFO Overlay。rc.7 的 Approval 正式
   `session-` 前缀，但不能用同名新建代替正式恢复。
 - 没有 Approval/Question Overlay：运行 `--dump-config`，确认 base 中对应服务已
   挂载；TUI 会显示可选服务缺失提示并 fail-closed。
+- 欢迎页不显示最近会话：确认 `ctx.sessionQuery` 已挂载，且其他会话的 `cwd` 与当前工作
+  目录完全一致；查询服务异常不会影响正常对话。
 - 终端显示异常：先执行 `reset`；本模式会使用 Alternate Screen，退出后应自动返回 shell。
 
 ## 卸载

@@ -4,6 +4,7 @@ import {
   createInitialSnapshot,
   type CapabilityState,
   type OverlayState,
+  type RecentSessionsState,
   type SessionEventLike,
   type TuiSnapshot,
 } from './state.js'
@@ -33,6 +34,7 @@ export class TuiStore {
       ...initial,
       capabilities: this.snapshot.capabilities,
       notice: this.snapshot.notice,
+      recentSessions: this.snapshot.recentSessions,
     }
     for (const event of events) this.snapshot = reduceSessionEvent(this.snapshot, event)
     this.emit()
@@ -75,6 +77,10 @@ export class TuiStore {
 
   setOverlay(overlay: OverlayState): void {
     this.patch({ overlay })
+  }
+
+  setRecentSessions(recentSessions: RecentSessionsState): void {
+    this.patch({ recentSessions })
   }
 
   private patch(values: Partial<TuiSnapshot>): void {

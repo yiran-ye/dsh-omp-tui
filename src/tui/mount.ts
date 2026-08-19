@@ -74,7 +74,7 @@ export function mountTui(options: MountOptions): MountedTui {
     try {
       return mergeSlashCommandAutocompleteItems(options.commands?.list() ?? [], userInvocableSkills)
     } catch (error) {
-      options.store.setNotice(`读取 Slash Commands 失败：${error instanceof Error ? error.message : String(error)}`)
+      options.store.setNotice(`读取斜杠命令失败：${error instanceof Error ? error.message : String(error)}`)
       return mergeSlashCommandAutocompleteItems([], userInvocableSkills)
     }
   }
@@ -102,7 +102,7 @@ export function mountTui(options: MountOptions): MountedTui {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted && !stopped) {
-          options.store.setNotice(`读取 Skills 失败：${error instanceof Error ? error.message : String(error)}`)
+          options.store.setNotice(`读取技能失败：${error instanceof Error ? error.message : String(error)}`)
         }
       })
       .finally(() => {
@@ -150,25 +150,25 @@ export function mountTui(options: MountOptions): MountedTui {
   const openSkills = (): void => {
     const registry = options.skills
     if (registry === undefined) {
-      options.store.setNotice('Skills 服务未挂载。')
+      options.store.setNotice('技能服务未挂载。')
       return
     }
     activeSkillPicker?.abort()
     const controller = new AbortController()
     activeSkillPicker = controller
-    options.store.setNotice('正在读取可由用户调用的 Skills…')
+    options.store.setNotice('正在读取可由用户调用的技能…')
     void registry.list(controller.signal)
       .then((skills) => {
         if (stopped || controller.signal.aborted || activeSkillPicker !== controller) return
         userInvocableSkills = skills
         updateSlashCommands()
         if (skills.length === 0) {
-          options.store.setNotice('当前工作区没有可由用户调用的 Skill。')
+          options.store.setNotice('当前工作区没有可由用户调用的技能。')
           return
         }
         openCatalog(
-          'Skills',
-          '选择后会在输入框预填 /名称；按 Enter 调用该 Skill。',
+          '技能',
+          '选择后会在输入框预填 /名称；按 Enter 调用该技能。',
           skills.map((skill) => {
             const description = skill.description ?? skill.whenToUse
             return {
@@ -186,7 +186,7 @@ export function mountTui(options: MountOptions): MountedTui {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted && !stopped) {
-          options.store.setNotice(`读取 Skills 失败：${error instanceof Error ? error.message : String(error)}`)
+          options.store.setNotice(`读取技能失败：${error instanceof Error ? error.message : String(error)}`)
         }
       })
       .finally(() => {
@@ -206,7 +206,7 @@ export function mountTui(options: MountOptions): MountedTui {
       return
     }
     openCatalog(
-      'MCP Tools',
+      'MCP 工具',
       'MCP 工具由模型调用；选择后会把工具名预填到输入框，不会直接执行。',
       tools.map((tool) => ({
         value: tool.name,
@@ -260,7 +260,7 @@ export function mountTui(options: MountOptions): MountedTui {
         })
         const failures = catalog.failures.length === 0 ? '' : `\n\n未能读取：${catalog.failures.join('；')}`
         openCatalog(
-          'Models',
+          '模型',
           `当前模型：${current}\n选择后会在下一次模型请求生效。${failures}`,
           items,
           (value) => {
@@ -305,7 +305,7 @@ export function mountTui(options: MountOptions): MountedTui {
       return
     }
     if (activeSlashCommand !== undefined) {
-      options.store.setNotice('已有 Slash Command 正在执行；按 Esc 或 Ctrl+C 取消。')
+      options.store.setNotice('已有斜杠命令正在执行；按 Esc 或 Ctrl+C 取消。')
       return
     }
     const controller = new AbortController()

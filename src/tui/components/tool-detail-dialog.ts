@@ -49,7 +49,7 @@ export class ToolDetailDialog implements Component {
     const bodyWidth = Math.max(1, safeWidth - 4)
     const entry = this.entries[this.selected]
     if (entry === undefined || presenter === undefined) {
-      return renderOverlayFrame('Tools', [theme.dim('当前 Session 还没有工具调用。'), '', theme.dim('Esc 关闭')], safeWidth)
+      return renderOverlayFrame('工具', [theme.dim('当前会话还没有工具调用。'), '', theme.dim('Esc 关闭')], safeWidth)
     }
     const expandedDetail = this.getExpandedDetail(entry, presenter, bodyWidth)
     const expanded = expandedDetail.lines
@@ -66,7 +66,7 @@ export class ToolDetailDialog implements Component {
       '',
       theme.dim('↑/↓ 切换工具 · PgUp/PgDn 滚动 · Ctrl+O/Esc 关闭'),
     ]
-    return fitLines(renderOverlayFrame('Tool Detail', body, safeWidth), safeWidth)
+    return fitLines(renderOverlayFrame('工具详情', body, safeWidth), safeWidth)
   }
 
   private getExpandedDetail(entry: ToolTranscriptEntry, presenter: ToolPresenter, bodyWidth: number): ExpandedToolDetail {

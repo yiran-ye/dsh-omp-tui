@@ -54,13 +54,13 @@ describe('备用屏挂载', () => {
 
     mounted.tui.renderNow(true)
     expect(terminal.output).toContain('\u001b[?1049h')
-    expect(stripTerminalSequences(terminal.output)).toContain('Welcome back!')
+    expect(stripTerminalSequences(terminal.output)).toContain('欢迎回来！')
 
     store.beginClosing()
     mounted.stop()
     expect(terminal.output).toContain('\u001b[?1049l')
     expect(stripTerminalSequences(terminal.output)).toContain('dsh-omp-tui v')
-    expect(stripTerminalSequences(terminal.output)).toContain('Closing session…')
+    expect(stripTerminalSequences(terminal.output)).toContain('正在关闭会话…')
   })
 
   it('显式主滚动容器保持向上滚动能力', () => {
@@ -205,7 +205,7 @@ describe('Slash Command 分派', () => {
 
     mounted.app.prompt.input.onSubmit?.('/skills')
     await settle()
-    expect(store.getSnapshot().overlay).toMatchObject({ kind: 'catalog', title: 'Skills' })
+    expect(store.getSnapshot().overlay).toMatchObject({ kind: 'catalog', title: '技能' })
     mounted.stop()
   })
 
@@ -228,7 +228,7 @@ describe('Slash Command 分派', () => {
     })
 
     mounted.app.prompt.input.onSubmit?.('/mcp')
-    expect(store.getSnapshot().overlay).toMatchObject({ kind: 'catalog', title: 'MCP Tools' })
+    expect(store.getSnapshot().overlay).toMatchObject({ kind: 'catalog', title: 'MCP 工具' })
     mounted.stop()
   })
 
@@ -273,7 +273,7 @@ describe('Slash Command 分派', () => {
     mounted.app.prompt.input.onSubmit?.('/model')
     await settle()
     const overlay = store.getSnapshot().overlay
-    expect(overlay).toMatchObject({ kind: 'catalog', title: 'Models' })
+    expect(overlay).toMatchObject({ kind: 'catalog', title: '模型' })
     if (overlay.kind !== 'catalog') throw new Error('expected model catalog')
     expect(overlay.body).toContain('当前模型：deepseek/deepseek-chat')
 

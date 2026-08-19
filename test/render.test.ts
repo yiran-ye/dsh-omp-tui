@@ -64,22 +64,31 @@ describe('OMP 风格渲染', () => {
       expect(lines).toHaveLength(1)
       assertWidth(lines, width)
     }
+    const plain = new StatusLine(new TuiStore().getSnapshot()).render(80).map(stripTerminalSequences).join('')
+    expect(plain).not.toContain('provider/model')
+    expect(plain).not.toContain('ctx --')
   })
 
   it('Welcome 使用双栏布局且不展示未实现的能力', () => {
     const store = new TuiStore()
     store.setSession('session-x', 'deepseek', 'deepseek-chat')
+    store.setRecentSessions({
+      status: 'ready',
+      items: [{ id: 'session-old', label: '修复欢迎页布局', timeAgo: '3 分钟前', timestamp: 1 }],
+    })
     const lines = new Welcome(store.getSnapshot()).render(80)
     const plain = lines.map(stripTerminalSequences).join('\n')
     assertWidth(lines, 80)
     expect(plain).toContain('dsh-omp-tui v')
-    expect(plain).toContain('Welcome back!')
+    expect(plain).toContain('欢迎回来！')
     expect(plain).toContain('deepseek-chat')
     expect(plain).toContain('deepseek')
-    expect(plain).toContain('Tips')
-    expect(plain).toContain('Run /help')
+    expect(plain).toContain('快捷提示')
+    expect(plain).toContain('最近会话')
+    expect(plain).toContain('修复欢迎页布局')
+    expect(plain).toContain('输入 /help')
     expect(plain).not.toContain('LSP Servers')
-    expect(plain).not.toContain('Recent sessions')
+    expect(plain).not.toContain('LSP')
     expect(lines.some((line) => stripTerminalSequences(line).split('│').length >= 4)).toBe(true)
   })
 
@@ -106,7 +115,7 @@ describe('OMP 风格渲染', () => {
     const presenter = new ToolPresenter(undefined, 4)
     const presented = presenter.present(entry)
     const summary = presenter.presentSummary(entry)
-    expect(presented.summaryLines.at(-1)).toContain('more lines')
+    expect(presented.summaryLines.at(-1)).toContain('另有')
     expect(presented.detailLines.length).toBeGreaterThan(presented.summaryLines.length)
     expect(summary.summaryLines).toEqual(presented.summaryLines)
     expect(summary.detailLines).toEqual([])
@@ -227,10 +236,12 @@ describe('OMP 风格渲染', () => {
     const lines = app.render(32)
     assertWidth(lines, 32)
     const plain = lines.map(stripTerminalSequences).join('\n')
-    expect(plain).toContain('› You')
-    expect(plain).toContain('● DeepSeek')
+    expect(plain).toContain('检查当前项目')
+    expect(plain).toContain('项目状态正常。')
+    expect(plain).not.toContain('› You')
+    expect(plain).not.toContain('● DeepSeek')
     expect(plain).toContain('╭')
-    expect(plain).toContain('输入任务…')
+    expect(plain).toContain('输入任务，/ 查看命令…')
     app.dispose()
   })
 
@@ -262,7 +273,7 @@ describe('OMP 风格渲染', () => {
     app.dispose()
   })
 
-  it('关闭时在最终文档中显示 Closing session 状态', () => {
+  it('关闭时在最终文档中显示中文关闭状态', () => {
     const terminal = new MemoryTerminal()
     terminal.columns = 64
     const tui = new TuiMainScreen(terminal, true)
@@ -270,7 +281,7 @@ describe('OMP 风格渲染', () => {
     store.beginClosing()
     const app = new App(tui, store, new ToolPresenter(undefined), () => undefined)
     tui.addChild(app)
-    expect(app.render(64).map(stripTerminalSequences).join('\n')).toContain('Closing session…')
+    expect(app.render(64).map(stripTerminalSequences).join('\n')).toContain('正在关闭会话…')
     app.dispose()
   })
 

@@ -45,6 +45,19 @@ describe('TuiStore 与 AgentSessionBinding', () => {
     expect(notifications).toBe(2)
   })
 
+  it('新会话重置时保留最近会话目录状态', () => {
+    const store = new TuiStore()
+    store.setRecentSessions({
+      status: 'ready',
+      items: [{ id: 'session-old', label: '旧会话', timeAgo: '1 小时前', timestamp: 1 }],
+    })
+    store.reset()
+    expect(store.getSnapshot().recentSessions).toEqual({
+      status: 'ready',
+      items: [{ id: 'session-old', label: '旧会话', timeAgo: '1 小时前', timestamp: 1 }],
+    })
+  })
+
   it('绑定 Session、Agent status 和 inbox，并可解除监听', () => {
     const source = new EventSource()
     const session = Session.create(SessionId('session-store-test'))

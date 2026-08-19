@@ -10,6 +10,8 @@ Web Runtime、Browser 或 headless runner。
 主插件的强制注入只有创建/恢复 Agent 必需的 `agentDefaultModel`、`agents` 与
 `sessions`。Tools、Approval、User Questions、Permission Presets、Compaction、
 Projection、Agent Presets、Commands 和 Skills 均通过 `ctx.get()` 可选发现。
+`Session Query` 同样是可选服务，只为欢迎页提供当前工作区最近会话；缺失时不影响
+Agent 主链路。
 
 ## 数据流
 
@@ -21,6 +23,7 @@ Editor submit
    ├─ /skills ────── ctx.skills.list({ cwd, scope }) → 预填 /<skill-name>
    ├─ /mcp ───────── ctx.tools.schemas(agent) → MCP 工具目录
    ├─ /model ─────── ctx.llm.listProviders/listModels → ModelSelectionRef
+   ├─ Welcome ─────── ctx.sessionQuery.filterSessions/readTitleSnapshots
    ├─ idle ───────── Agent.followup(UserMessage)
    └─ running ────── Agent.steer(UserMessage)
                        │
@@ -39,6 +42,10 @@ Editor submit
 `TuiStore` 不订阅 Cordis。`AgentSessionBinding` 是唯一 Event Adapter，在 replay
 期间缓存并排序可能重叠的实时事件，再依靠 `seq <= lastSeq` 丢弃重复事件。
 流式输出只保留每个 block 当前累积值；最终 `assistant/message` 替换临时块。
+
+最近会话不是 Transcript 投影的一部分。启动和新建 Session 后，独立的可取消查询按
+`process.cwd()` 过滤、排除当前 Session、截取 4 条并批量折叠标题，最终只把轻量展示
+摘要写入 Store；查询失败不会进入 notice 或 Agent 上下文。
 
 Transcript 投影的是 append-only Session Event Log，而不是提供给模型的 ordered
 surface。Compaction 的 `surfaceOp: { op: 'replace' }` 只改变模型上下文，TUI
@@ -101,3 +108,7 @@ shutdown 都会显式 settle Promise，不留下等待中的 Agent。
 `TerminalRestore` 幂等关闭 synchronized output、bracketed paste 和 keyboard
 protocol，恢复 raw mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIGHUP、未捕获
 异常、Promise rejection 和流断开，且正常路径不直接调用 `process.exit()`。
+
+主题使用语义色角色而不是组件内硬编码 ANSI：True Color 不可用时依次降级到 ANSI
+256 与 ANSI 16。欢迎页渐变是纯渲染函数，不创建动画或计时器；StatusLine 作为输入框
+上边框内容按宽度逐级省略，只渲染真实存在的 Harness 状态。

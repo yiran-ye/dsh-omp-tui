@@ -127,7 +127,7 @@ function resultLines(view: ToolResultView | undefined, fallback: string): string
         : view.files.flatMap((file) => [file.path, ...file.matches.map((match) => `  ${match.lineNumber}: ${match.line}`)])
     case 'web':
       return view.kind === 'fetch'
-        ? [`${view.statusCode} ${view.url}${view.truncated ? ' · truncated' : ''}`]
+        ? [`${view.statusCode} ${view.url}${view.truncated ? ' · 已截断' : ''}`]
         : [
             ...(view.answer === undefined ? [] : view.answer.split('\n')),
             ...view.sources.map((source) => `${source.title ?? source.url} · ${source.url}`),
@@ -175,7 +175,7 @@ function summarizeResultLines(view: ToolResultView | undefined, fallback: string
       return summary
     case 'web':
       if (view.kind === 'fetch') {
-        appendLine(summary, `${view.statusCode} ${view.url}${view.truncated ? ' · truncated' : ''}`, maxLines)
+        appendLine(summary, `${view.statusCode} ${view.url}${view.truncated ? ' · 已截断' : ''}`, maxLines)
         return summary
       }
       if (view.answer !== undefined) appendTextLines(summary, view.answer, maxLines)
@@ -186,7 +186,7 @@ function summarizeResultLines(view: ToolResultView | undefined, fallback: string
 
 function truncateSummary(lines: readonly string[], totalLines: number): string[] {
   const truncated = totalLines - lines.length
-  return truncated > 0 ? [...lines, `… ${truncated} more lines · Ctrl+O`] : [...lines]
+  return truncated > 0 ? [...lines, `… 另有 ${truncated} 行 · Ctrl+O`] : [...lines]
 }
 
 export class ToolPresenter {

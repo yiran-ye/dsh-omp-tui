@@ -21,8 +21,8 @@ export class ReasoningBlock implements Component {
     const safeWidth = Math.max(1, width)
     const wrapped = wrapPlain(this.text, Math.max(1, safeWidth - 2))
     const visible = this.collapsed ? wrapped.slice(0, 2) : wrapped
-    const suffix = this.collapsed && wrapped.length > visible.length ? '  [collapsed]' : ''
-    const header = fitLine(theme.dim(`✦ thinking${suffix}`), safeWidth)
-    return [header, ...indentLines(visible.map(theme.dim), '  ', safeWidth)]
+    const suffix = this.collapsed && wrapped.length > visible.length ? ' · 已折叠' : ''
+    const header = fitLine(theme.muted(`✦ 思考${suffix}`), safeWidth)
+    return [header, ...indentLines(visible.map((line) => theme.italic(theme.thinking(line))), '  ', safeWidth)]
   }
 }

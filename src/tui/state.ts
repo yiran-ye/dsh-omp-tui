@@ -101,6 +101,18 @@ export interface CapabilityState {
 
 export type TuiLifecycle = 'active' | 'closing'
 
+export interface RecentSessionSummary {
+  readonly id: string
+  readonly label: string
+  readonly timeAgo: string
+  readonly timestamp: number
+}
+
+export interface RecentSessionsState {
+  readonly status: 'loading' | 'ready' | 'unavailable' | 'error'
+  readonly items: readonly RecentSessionSummary[]
+}
+
 export interface TuiSnapshot {
   readonly lastSeq: number
   readonly transcript: readonly TranscriptEntry[]
@@ -117,6 +129,7 @@ export interface TuiSnapshot {
   readonly model: string | undefined
   readonly lifecycle: TuiLifecycle
   readonly capabilities: CapabilityState
+  readonly recentSessions: RecentSessionsState
 }
 
 export const DEFAULT_CAPABILITIES: CapabilityState = {
@@ -146,5 +159,6 @@ export function createInitialSnapshot(): TuiSnapshot {
     model: undefined,
     lifecycle: 'active',
     capabilities: DEFAULT_CAPABILITIES,
+    recentSessions: { status: 'unavailable', items: [] },
   }
 }

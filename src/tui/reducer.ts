@@ -72,7 +72,7 @@ function userEntry(event: SessionEventLike): UserTranscriptEntry | undefined {
     }
   }
 
-  const plugin = stringField(source, 'plugin') ?? 'plugin'
+  const plugin = stringField(source, 'plugin') ?? '插件'
   const form = stringField(source, 'form')
   const summary = form === 'notice' ? stringField(source, 'summary') : undefined
   const label = [plugin, form].filter((part): part is string => part !== undefined).join(' · ')
@@ -80,7 +80,7 @@ function userEntry(event: SessionEventLike): UserTranscriptEntry | undefined {
     kind: 'user',
     key: `user:${event.seq}`,
     seq: event.seq,
-    text: summary ?? `Injected context · ${label}`,
+    text: summary ?? `注入上下文 · ${label}`,
     detail: content.text,
     injected: true,
     sourceLabel: label,
