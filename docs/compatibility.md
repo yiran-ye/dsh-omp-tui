@@ -85,8 +85,9 @@ rc.7 的核心持久事件为：
 ## pi-tui
 
 使用 Node.js 兼容的 `@earendil-works/pi-tui@0.84.2`：`ProcessTerminal` 管理
-raw mode/括号粘贴，`TuiMainScreen` 在主屏缓冲区差量绘制并保留原生
-scrollback；`Editor`、`Markdown`、`SelectList` 与 Overlay API 构成界面。
+raw mode/括号粘贴，`TuiAltScreen` 在备用屏缓冲区差量绘制并提供应用内滚动；
+退出时回到主屏并输出最后一帧文档。`Editor`、`Markdown`、`SelectList` 与
+Overlay API 构成界面。
 不使用 Bun-only 的 `@oh-my-pi/pi-tui`。
 
 ## 调研来源

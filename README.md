@@ -16,7 +16,7 @@ dsh launcher
    └─ dsh-omp-tui
       ├─ AgentController ── followup / steer / cancel
       ├─ Session Event Log ── replay + live projection
-      └─ TuiMainScreen ── Transcript / Status / Editor / Overlay
+      └─ TuiAltScreen ── Welcome / Transcript / Status / Editor / Overlay
 ```
 
 TUI 与 Harness 服务位于同一个 Cordis 插件进程中。Transcript 的唯一事实源是
@@ -29,6 +29,9 @@ Web Server，也不包含 Web/Browser、JSON-RPC、ACP、独立 Agent Runtime �
 - `web`：浏览器 UI 与 HTTP/API 服务；本 Bundle 不使用。
 - `headless`：适合管道和无人值守任务；stdin/stdout 非 TTY 时请使用它。
 - `omp-tui`：直接驱动当前 Harness Agent 的交互式终端入口。
+
+`omp-tui` 使用终端备用屏缓冲区：启动后会以干净的全屏 TUI 覆盖此前 shell
+输出；退出时会将最后一帧会话文档输出回主缓冲区，并显示可直接粘贴的恢复命令。
 
 ## 系统要求
 
@@ -177,8 +180,8 @@ Approval 与 User Questions 共用一个 FIFO Overlay。rc.7 的 Approval 正式
 `allowed-once`、`rejected`、`cancelled`、`unavailable`，因此 UI 不虚构“本会话
 总是允许”。Question 支持单选、多选、自由文本和跳过。
 
-终端保持主屏缓冲区以保留 scrollback。正常退出、信号、异常和 TTY 断开路径都会
-尽最大努力停止 TUI、关闭括号粘贴/同步输出、退出 raw mode 并显示光标。
+终端使用备用屏缓冲区提供干净的全屏 TUI。正常退出、信号、异常和 TTY 断开路径都会
+尽最大努力渲染关闭状态、停止 TUI、关闭括号粘贴/同步输出、退出 raw mode 并显示光标。
 
 ## 故障排查
 
@@ -189,7 +192,7 @@ Approval 与 User Questions 共用一个 FIFO Overlay。rc.7 的 Approval 正式
   `session-` 前缀，但不能用同名新建代替正式恢复。
 - 没有 Approval/Question Overlay：运行 `--dump-config`，确认 base 中对应服务已
   挂载；TUI 会显示可选服务缺失提示并 fail-closed。
-- 终端显示异常：先执行 `reset`；项目自身不会启用 Alternate Screen。
+- 终端显示异常：先执行 `reset`；本模式会使用 Alternate Screen，退出后应自动返回 shell。
 
 ## 卸载
 

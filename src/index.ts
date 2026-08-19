@@ -21,6 +21,7 @@ import { createCordisEventSource } from './runtime/agent-session.js'
 import { installHarnessInteractions, type HarnessInteractionInstallation } from './runtime/harness-interactions.js'
 import { InteractionQueue } from './runtime/interaction-queue.js'
 import { createModelCatalog } from './runtime/model-catalog.js'
+import { formatResumeHint, resolveLaunchProfile } from './runtime/resume-hint.js'
 import { ProcessSafety, assertInteractiveTerminal } from './runtime/terminal-restore.js'
 import { mountTui, type MountedTui } from './tui/mount.js'
 
@@ -52,6 +53,20 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   let removeCommandChangeListener: (() => void) | undefined
   let removeSkillChangeListener: (() => void) | undefined
   let removeToolChangeListener: (() => void) | undefined
+  const launchProfile = resolveLaunchProfile()
+  let resumeHintPrinted = false
+
+  const printResumeHint = (): void => {
+    if (resumeHintPrinted || mounted === undefined) return
+    const sessionId = controller?.store.getSnapshot().sessionId
+    if (sessionId === undefined) return
+    try {
+      process.stderr.write(formatResumeHint(sessionId, launchProfile))
+      resumeHintPrinted = true
+    } catch (error) {
+      report(`无法输出恢复命令：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 
   ctx.effect(() => () => {
     processSafety?.dispose()
@@ -78,7 +93,13 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       ...(presets === undefined ? {} : { presets }),
       eventSource: createCordisEventSource(ctx),
       cwd: process.cwd(),
-      stopUi: () => mounted?.stop(),
+      stopUi: () => {
+        try {
+          mounted?.stop()
+        } finally {
+          printResumeHint()
+        }
+      },
       requestExit: appExit,
     })
     interactionInstallation = installHarnessInteractions(ctx, interactions, () => controller?.agent)
@@ -184,6 +205,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         await controller?.shutdown(code)
       },
       restore: () => mounted?.stop(),
+      beginClosing: () => controller?.store.beginClosing(),
       report,
     })
     processSafety.install()

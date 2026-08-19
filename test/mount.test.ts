@@ -7,6 +7,7 @@ class MemoryTerminal implements Terminal {
   kittyProtocolActive = false
   columns = 64
   rows = 24
+  output = ''
   private onInput: ((data: string) => void) | undefined
 
   start(onInput: (data: string) => void, _onResize: () => void): void {
@@ -17,7 +18,9 @@ class MemoryTerminal implements Terminal {
   }
   stop(): void {}
   async drainInput(): Promise<void> {}
-  write(_data: string): void {}
+  write(data: string): void {
+    this.output += data
+  }
   moveBy(_lines: number): void {}
   hideCursor(): void {}
   showCursor(): void {}
@@ -31,6 +34,35 @@ class MemoryTerminal implements Terminal {
 async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve))
 }
+
+describe('备用屏挂载', () => {
+  it('进入干净的备用屏，并在停止时回写最终文档', () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore()
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    mounted.tui.renderNow(true)
+    expect(terminal.output).toContain('\u001b[?1049h')
+    expect(stripTerminalSequences(terminal.output)).toContain('Welcome back!')
+
+    store.beginClosing()
+    mounted.stop()
+    expect(terminal.output).toContain('\u001b[?1049l')
+    expect(stripTerminalSequences(terminal.output)).toContain('dsh-omp-tui v')
+    expect(stripTerminalSequences(terminal.output)).toContain('Closing session…')
+  })
+})
 
 describe('Slash Command 分派', () => {
   it('动态列出并执行 Harness 注册命令', async () => {

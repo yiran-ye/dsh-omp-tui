@@ -70,7 +70,7 @@ Provider 的模型。选择项直接更新当前 Agent 持有的 `ModelSelection
 3. 新 Session 可解析/挂载 Agent Preset；恢复 Session 调用正式
    `agents.resume()`。
 4. `setup(agentCtx)` 安装 Model Selection，并为新 Session 挂载 Preset。
-5. 等待 `agent.whenIdle()`，绑定历史与实时事件，挂载 `TuiMainScreen`。
+5. 等待 `agent.whenIdle()`，绑定历史与实时事件，挂载 `TuiAltScreen`。
 6. shutdown 依次取消运行、等待 idle、flush、解除监听、停止 TUI、dispose
    Agent，最后通过 `appExit` 请求退出。
 
@@ -97,7 +97,7 @@ shutdown 都会显式 settle Promise，不留下等待中的 Agent。
 
 ## 终端模型
 
-`ProcessTerminal + TuiMainScreen` 使用主屏缓冲区和差量绘制。`TerminalRestore`
-幂等关闭 synchronized output、bracketed paste 和 keyboard protocol，恢复 raw
-mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIGHUP、未捕获异常、Promise
-rejection 和流断开，且正常路径不直接调用 `process.exit()`。
+`ProcessTerminal + TuiAltScreen` 使用备用屏缓冲区和差量绘制，并由应用接管滚动。
+`TerminalRestore` 幂等关闭 synchronized output、bracketed paste 和 keyboard
+protocol，恢复 raw mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIGHUP、未捕获
+异常、Promise rejection 和流断开，且正常路径不直接调用 `process.exit()`。

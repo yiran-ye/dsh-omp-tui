@@ -1,4 +1,4 @@
-import { ProcessTerminal, TuiMainScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
+import { ProcessTerminal, TuiAltScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
 import type { InteractionQueue } from '../runtime/interaction-queue.js'
 import type { ModelCatalogItem, ModelCatalogPort } from '../runtime/model-catalog.js'
 import type { ToolLookup } from '../runtime/tool-presentation.js'
@@ -47,7 +47,7 @@ export interface MountOptions {
 }
 
 export interface MountedTui {
-  readonly tui: TuiMainScreen
+  readonly tui: TuiAltScreen
   readonly app: App
   refreshSlashCommands(): void
   stop(): void
@@ -56,7 +56,7 @@ export interface MountedTui {
 export function mountTui(options: MountOptions): MountedTui {
   if (options.requireTty !== false && options.terminal === undefined) assertInteractiveTerminal()
   const terminal = options.terminal ?? new ProcessTerminal()
-  const tui = new TuiMainScreen(terminal, true)
+  const tui = new TuiAltScreen(terminal, true)
   const presenter = new ToolPresenter(options.tools, options.maxToolLines ?? 8)
   const policy = new InputPolicy()
   let stopped = false
@@ -460,8 +460,12 @@ export function mountTui(options: MountOptions): MountedTui {
       removeOverlayStoreListener()
       removeInteractionListener?.()
       closeRenderedOverlay()
-      app.dispose()
-      restore.restore()
+      try {
+        tui.renderNow(true)
+      } finally {
+        app.dispose()
+        restore.restore()
+      }
     },
   }
 }

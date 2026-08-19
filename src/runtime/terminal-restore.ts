@@ -62,6 +62,7 @@ export interface ProcessSafetyHooks {
   shutdown(code: number): Promise<void>
   restore(): void
   report(message: string): void
+  beginClosing?(): void
 }
 
 const SIGNAL_EXIT_CODES: Readonly<Record<'SIGINT' | 'SIGTERM' | 'SIGHUP', number>> = {
@@ -79,16 +80,19 @@ export class ProcessSafety {
   private readonly onStdinEnd = (): void => this.requestShutdown(0)
   private readonly onUncaughtException = (error: Error): void => {
     this.hooks.report(`未捕获异常：${error.stack ?? error.message}`)
+    this.hooks.beginClosing?.()
     this.hooks.restore()
     this.requestShutdown(1)
   }
   private readonly onUnhandledRejection = (reason: unknown): void => {
     this.hooks.report(`未处理 Promise rejection：${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`)
+    this.hooks.beginClosing?.()
     this.hooks.restore()
     this.requestShutdown(1)
   }
   private readonly onStdoutError = (error: Error): void => {
     this.hooks.report(`stdout 已断开：${error.message}`)
+    this.hooks.beginClosing?.()
     this.hooks.restore()
     this.requestShutdown(1)
   }
@@ -125,6 +129,7 @@ export class ProcessSafety {
   }
 
   private handleSignal(signal: keyof typeof SIGNAL_EXIT_CODES): void {
+    this.hooks.beginClosing?.()
     this.hooks.restore()
     this.requestShutdown(SIGNAL_EXIT_CODES[signal])
   }

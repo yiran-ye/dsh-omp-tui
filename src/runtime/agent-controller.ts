@@ -154,6 +154,7 @@ export class AgentController {
   shutdown(code = 0): Promise<void> {
     if (this.shutdownPromise !== undefined) return this.shutdownPromise
     this.closing = true
+    this.store.beginClosing()
     this.shutdownPromise = this.serializeLifecycle(() => this.performShutdown(code))
     return this.shutdownPromise
   }

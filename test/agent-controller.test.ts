@@ -170,6 +170,7 @@ describe('AgentController', () => {
     expect(disposed).toHaveBeenCalledTimes(1)
     expect(requestExit).toHaveBeenCalledOnce()
     expect(requestExit).toHaveBeenCalledWith(0)
+    expect(controller.store.getSnapshot().lifecycle).toBe('closing')
   })
 
   it('/clear 生命周期会 flush/dispose 旧 Agent 并创建新 Session', async () => {

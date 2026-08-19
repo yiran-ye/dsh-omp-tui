@@ -60,6 +60,11 @@ export class TuiStore {
     this.patch({ sessionId, provider, model })
   }
 
+  beginClosing(): void {
+    if (this.snapshot.lifecycle === 'closing') return
+    this.patch({ lifecycle: 'closing' })
+  }
+
   setCapabilities(capabilities: Partial<CapabilityState>): void {
     this.patch({ capabilities: { ...this.snapshot.capabilities, ...capabilities } })
   }

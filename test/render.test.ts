@@ -10,6 +10,7 @@ import { App } from '../src/tui/components/app.js'
 import { StatusLine } from '../src/tui/components/status-line.js'
 import { ToolCard } from '../src/tui/components/tool-card.js'
 import { UserBlock } from '../src/tui/components/user-block.js'
+import { Welcome } from '../src/tui/components/welcome.js'
 import { HelpDialog } from '../src/tui/components/help-dialog.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { ToolTranscriptEntry } from '../src/tui/state.js'
@@ -61,6 +62,29 @@ describe('OMP 风格渲染', () => {
       expect(lines).toHaveLength(1)
       assertWidth(lines, width)
     }
+  })
+
+  it('Welcome 使用双栏布局且不展示未实现的能力', () => {
+    const store = new TuiStore()
+    store.setSession('session-x', 'deepseek', 'deepseek-chat')
+    const lines = new Welcome(store.getSnapshot()).render(80)
+    const plain = lines.map(stripTerminalSequences).join('\n')
+    assertWidth(lines, 80)
+    expect(plain).toContain('dsh-omp-tui v')
+    expect(plain).toContain('Welcome back!')
+    expect(plain).toContain('deepseek-chat')
+    expect(plain).toContain('deepseek')
+    expect(plain).toContain('Tips')
+    expect(plain).toContain('Run /help')
+    expect(plain).not.toContain('LSP Servers')
+    expect(plain).not.toContain('Recent sessions')
+    expect(lines.some((line) => stripTerminalSequences(line).split('│').length >= 4)).toBe(true)
+  })
+
+  it('Welcome 在窄终端退化为单栏且不会溢出', () => {
+    const lines = new Welcome(new TuiStore().getSnapshot()).render(32)
+    assertWidth(lines, 32)
+    expect(lines.every((line) => stripTerminalSequences(line).split('│').length <= 3)).toBe(true)
   })
 
   it('Tool Card 截断摘要且保留详情', () => {
@@ -171,6 +195,18 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('QUOTA')
     expect(plain).toContain('Allocated quota exceeded.')
     assertWidth(app.render(48), 48)
+    app.dispose()
+  })
+
+  it('关闭时在最终文档中显示 Closing session 状态', () => {
+    const terminal = new MemoryTerminal()
+    terminal.columns = 64
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore()
+    store.beginClosing()
+    const app = new App(tui, store, new ToolPresenter(undefined), () => undefined)
+    tui.addChild(app)
+    expect(app.render(64).map(stripTerminalSequences).join('\n')).toContain('Closing session…')
     app.dispose()
   })
 

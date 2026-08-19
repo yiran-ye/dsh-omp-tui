@@ -99,6 +99,8 @@ export interface CapabilityState {
   readonly agentPresets: boolean
 }
 
+export type TuiLifecycle = 'active' | 'closing'
+
 export interface TuiSnapshot {
   readonly lastSeq: number
   readonly transcript: readonly TranscriptEntry[]
@@ -113,6 +115,7 @@ export interface TuiSnapshot {
   readonly sessionId: string | undefined
   readonly provider: string | undefined
   readonly model: string | undefined
+  readonly lifecycle: TuiLifecycle
   readonly capabilities: CapabilityState
 }
 
@@ -141,6 +144,7 @@ export function createInitialSnapshot(): TuiSnapshot {
     sessionId: undefined,
     provider: undefined,
     model: undefined,
+    lifecycle: 'active',
     capabilities: DEFAULT_CAPABILITIES,
   }
 }
