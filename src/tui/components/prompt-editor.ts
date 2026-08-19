@@ -5,6 +5,7 @@ import {
   Editor,
   stripTerminalSequences,
   visibleWidth,
+  type SlashCommand as AutocompleteSlashCommand,
   type TUI,
 } from '@earendil-works/pi-tui'
 import { SLASH_COMMAND_AUTOCOMPLETE_ITEMS } from '../commands.js'
@@ -17,11 +18,13 @@ export class PromptEditor extends Container {
   constructor(tui: TUI, onSubmit: (text: string) => void) {
     super()
     this.input = new Editor(tui, editorTheme, { paddingX: 1, autocompleteMaxVisible: 6 })
-    this.input.setAutocompleteProvider(
-      new CombinedAutocompleteProvider([...SLASH_COMMAND_AUTOCOMPLETE_ITEMS], process.cwd()),
-    )
+    this.setSlashCommands(SLASH_COMMAND_AUTOCOMPLETE_ITEMS)
     this.input.onSubmit = onSubmit
     this.addChild(this.input)
+  }
+
+  setSlashCommands(commands: readonly AutocompleteSlashCommand[]): void {
+    this.input.setAutocompleteProvider(new CombinedAutocompleteProvider([...commands], process.cwd()))
   }
 
   override render(width: number): string[] {

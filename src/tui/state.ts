@@ -59,9 +59,22 @@ export interface HarnessStateSnapshot {
   readonly agentPreset?: string
 }
 
+export interface CatalogOverlayItem {
+  readonly value: string
+  readonly label: string
+  readonly description?: string
+}
+
 export type OverlayState =
   | { readonly kind: 'none' }
   | { readonly kind: 'help' }
+  | {
+    readonly kind: 'catalog'
+    readonly id: number
+    readonly title: string
+    readonly body?: string
+    readonly items: readonly CatalogOverlayItem[]
+  }
   | { readonly kind: 'tools'; readonly selected: number }
   | { readonly kind: 'tool-detail'; readonly callId: string; readonly scroll: number }
   | { readonly kind: 'approval'; readonly requestId: number }

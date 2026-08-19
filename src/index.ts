@@ -3,15 +3,18 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-cmdline'
+import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-compaction'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-stats'
+import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-questions'
+import type { SkillRegistry as HarnessSkillRegistry } from '@deepseek-ai/dsh-skill'
 import type { Config as OmpTuiConfig } from './config.js'
 import { AgentController } from './runtime/agent-controller.js'
 import { createCordisEventSource } from './runtime/agent-session.js'
@@ -45,9 +48,15 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   let interactions: InteractionQueue | undefined
   let interactionInstallation: HarnessInteractionInstallation | undefined
   let processSafety: ProcessSafety | undefined
+  let removeCommandChangeListener: (() => void) | undefined
+  let removeSkillChangeListener: (() => void) | undefined
+  let removeToolChangeListener: (() => void) | undefined
 
   ctx.effect(() => () => {
     processSafety?.dispose()
+    removeCommandChangeListener?.()
+    removeSkillChangeListener?.()
+    removeToolChangeListener?.()
     interactionInstallation?.dispose()
     mounted?.stop()
     void controller?.shutdown().catch(report)
@@ -57,6 +66,8 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     await ctx.get('loader')?.await()
     const presets = ctx.get('agentPresets')
     const tools = ctx.get('tools')
+    const commands = ctx.get('commands')
+    const skills = ctx.get('skills')
     interactions = new InteractionQueue()
     controller = new AgentController({
       agents: ctx.agents,
@@ -88,6 +99,47 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       ...(config.resume === undefined ? {} : { resume: config.resume }),
       ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
     })
+    const commandRegistry = commands === undefined ? undefined : {
+      list: () => {
+        const agent = controller?.agent
+        return agent === undefined ? [] : commands.list(agent as Parameters<typeof commands.list>[0])
+      },
+      execute: (line: string, signal: AbortSignal) => {
+        const agent = controller?.agent
+        return agent === undefined
+          ? Promise.resolve(undefined)
+          : commands.execute(agent as Parameters<typeof commands.execute>[0], line, signal)
+      },
+    }
+    const skillRegistry = skills === undefined && presets === undefined ? undefined : {
+      list: async (signal: AbortSignal) => {
+        const agent = controller?.agent
+        if (agent === undefined) return []
+        const presetServices = presets as {
+          serviceFor?: (scope: unknown, name: string) => unknown
+        } | undefined
+        const scopedSkills = presetServices?.serviceFor === undefined
+          ? undefined
+          : presetServices.serviceFor(agent, 'skills')
+        const registry = (scopedSkills ?? skills) as HarnessSkillRegistry | undefined
+        if (registry === undefined) return []
+        const all = await registry.list({
+          cwd: process.cwd(),
+          scope: agent,
+          signal,
+        })
+        return all.filter((skill) => skill.invocation.userInvocable)
+      },
+    }
+    const mcpRegistry = tools === undefined ? undefined : {
+      list: () => {
+        const agent = controller?.agent
+        if (agent === undefined) return []
+        return tools.schemas(agent as Parameters<typeof tools.schemas>[0])
+          .filter((tool) => tool.name.startsWith('mcp__'))
+          .map((tool) => ({ name: tool.name, description: tool.description }))
+      },
+    }
     mounted = mountTui({
       store: controller.store,
       actions: {
@@ -105,9 +157,21 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         },
       },
       ...(tools === undefined ? {} : { tools }),
+      ...(commandRegistry === undefined ? {} : { commands: commandRegistry }),
+      ...(skillRegistry === undefined ? {} : { skills: skillRegistry }),
+      ...(mcpRegistry === undefined ? {} : { mcp: mcpRegistry }),
       interactions,
       ...(config.maxToolLines === undefined ? {} : { maxToolLines: config.maxToolLines }),
     })
+    if (commands !== undefined) {
+      removeCommandChangeListener = ctx.on('commands/change', () => mounted?.refreshSlashCommands())
+    }
+    if (skills !== undefined) {
+      removeSkillChangeListener = ctx.on('skills/change', () => mounted?.refreshSlashCommands())
+    }
+    if (tools !== undefined) {
+      removeToolChangeListener = ctx.on('tools/change', () => mounted?.refreshSlashCommands())
+    }
     processSafety = new ProcessSafety({
       shutdown: async (code) => {
         await controller?.shutdown(code)

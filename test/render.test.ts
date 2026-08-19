@@ -10,6 +10,7 @@ import { App } from '../src/tui/components/app.js'
 import { StatusLine } from '../src/tui/components/status-line.js'
 import { ToolCard } from '../src/tui/components/tool-card.js'
 import { UserBlock } from '../src/tui/components/user-block.js'
+import { HelpDialog } from '../src/tui/components/help-dialog.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { ToolTranscriptEntry } from '../src/tui/state.js'
 
@@ -161,13 +162,22 @@ describe('OMP 风格渲染', () => {
     const plain = app.render(64).map(stripTerminalSequences).join('\n')
     expect(plain).toContain('help')
     expect(plain).toContain('tools')
+    expect(plain).toContain('skills')
+    expect(plain).toContain('mcp')
     expect(plain).toContain('clear')
-    expect(plain).toContain('exit')
-    expect(plain).toContain('quit')
 
-    for (let index = 0; index < 4; index++) app.prompt.input.handleInput('\u001b[B')
+    for (let index = 0; index < 9; index++) app.prompt.input.handleInput('\u001b[B')
+    const selectedPlain = app.render(64).map(stripTerminalSequences).join('\n')
+    expect(selectedPlain).toContain('quit')
     app.prompt.input.handleInput('\r')
     expect(submitted).toEqual(['/quit'])
     app.dispose()
+  })
+
+  it('长命令帮助可滚动查看', () => {
+    const help = new HelpDialog(Array.from({ length: 20 }, (_, index) => `/command-${index + 1}  说明`).join('\n'))
+    expect(help.render(48).map(stripTerminalSequences).join('\n')).toContain('/command-1')
+    for (let index = 0; index < 12; index++) help.handleInput('\u001b[B')
+    expect(help.render(48).map(stripTerminalSequences).join('\n')).toContain('/command-20')
   })
 })

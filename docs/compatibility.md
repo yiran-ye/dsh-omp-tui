@@ -17,8 +17,8 @@
 以下实际运行接口包均为 `0.1.0-rc.7`：`dsh-agent`、`dsh-session`、
 `dsh-llm`、`dsh-tools`、`dsh-user-approval`、`dsh-user-questions`、
 `dsh-agent-default-model`、`dsh-agent-presets`、`dsh-cmdline`、
-`dsh-compaction`、`dsh-permission-presets`、`dsh-sandbox-policy`、
-`dsh-session-projection`、`dsh-session-stats` 与 `dsh-token-meter`。
+`dsh-commands`、`dsh-compaction`、`dsh-permission-presets`、`dsh-sandbox-policy`、
+`dsh-session-projection`、`dsh-session-stats`、`dsh-skill` 与 `dsh-token-meter`。
 
 rc.7 启动器只会向 ID 为 `agent-presets` 的 Cordis entry 注入发行版自带的
 preset roots，因此 Bundle 使用这个 canonical ID。`dsh-base` 本身没有挂载该
@@ -72,6 +72,15 @@ rc.7 的核心持久事件为：
 `presentCall(arguments)` 与 `presentResult(arguments, result)`；presentation
 类型包括 call 侧 `generic | terminal | diff`，result 侧另有
 `search | read | web`。无 presentation 或抛错时使用有界通用卡片。
+
+## Skills 与 MCP
+
+- `ctx.skills.list({ cwd, scope })` 返回按当前 Agent scope 合并后的 Skill 摘要；TUI 仅展示
+  `invocation.userInvocable === true` 的项目，并监听 `skills/change` 重新读取。Agent Preset
+  可通过 `agentPresets.serviceFor(agent, 'skills')` 提供 scope 专属目录。
+- `@deepseek-ai/dsh-mcp-client@0.1.0-rc.7` 是可选插件，并不提供独立 `ctx.mcp` 服务。每个
+  Server 的发现结果以 `mcp__<serverName>__<rawName>` 注册到 `ctx.tools`；因此 TUI 使用
+  `ctx.tools.schemas(agent)` 和名称前缀识别 MCP 工具，并监听 `tools/change`。
 
 ## pi-tui
 

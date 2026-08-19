@@ -98,10 +98,60 @@ dsh --profile omp-tui --agent-preset code
 
 | 命令 | 行为 |
 | --- | --- |
-| `/help` | 打开帮助 |
+| `/help` / `/hotkeys` | 打开帮助与快捷键 |
 | `/tools` | 浏览当前 Session 的完整工具参数与结果 |
-| `/clear` | flush/dispose 当前 Agent，创建新 Session，并保留输入历史 |
+| `/skills` | 浏览可由用户调用的 Skill；选择后预填 `/<skill-name>` |
+| `/mcp` | 浏览当前已连接 MCP Server 发现的工具；选择后预填工具名 |
+| `/clear` / `/new` | flush/dispose 当前 Agent，创建新 Session，并保留输入历史 |
+| `/retry` | 重新发送上一条用户任务 |
 | `/exit` / `/quit` | flush Session 后优雅退出 |
+
+除上述本地命令外，TUI 会在启动、创建新 Session、切换 Preset 或 Harness 命令表变更时，
+动态发现并执行 `ctx.commands` 中注册的官方命令。当前 `dsh-base` 通常提供
+`/compact`、`/feedback`、`/goal`、`/plan`；额外插件和 Agent Preset 注册的命令也会
+自动出现在 `/` 补全与 `/help` 中。补全菜单可用 `↑`/`↓` 滚动，按 Enter 执行；执行中的
+官方命令可用 Esc 或 Ctrl+C 取消。
+
+`/skills` 采用与 pi-tui 相同的语义：通过当前 Agent Preset 的 `skills` 服务（没有
+Preset 时回退至 `ctx.skills`）异步列出 `userInvocable` Skills。每个 Skill 也会加入 `/`
+补全；选择 `/skills` 目录中的条目只会预填 `/<skill-name>`，仍需按 Enter 后才由 DSH 的
+Skill 手势注入执行。
+
+`/mcp` 不会直接调用 MCP 工具。它从当前 Agent 可见的 `ctx.tools.schemas()` 中筛选
+`mcp__<server>__<tool>` 名称，并显示由 `@deepseek-ai/dsh-mcp-client` 发现的工具；模型会在
+后续任务中自行调用它们。MCP Client 未安装、未连接或没有发现工具时，`/mcp` 会明确提示。
+
+### 本地 Context7 MCP
+
+DSH 不会自动扫描项目内的 MCP 配置。本仓库将 `.dsh/` 作为本地私有覆盖目录并忽略它；如需
+为当前项目启用 Context7，请自行创建 `.dsh/context7.patch.yml`。它只在此次启动中生效，
+不会修改 Profile 的 `cordis.patch.yml`：
+
+```yaml
+- insert:
+    - id: mcp-context7
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: context7
+        transport: streamable-http
+        url: https://mcp.context7.com/mcp
+        headers: !!js >-
+          process.env.CONTEXT7_API_KEY
+            ? { Authorization: `Bearer ${process.env.CONTEXT7_API_KEY}` }
+            : {}
+        failOnStartupError: true
+```
+
+```sh
+# 每个要使用它的 Profile 只需安装一次 Client；这本身不会启用 Context7。
+dsh plugin --profile omp-tui add @deepseek-ai/dsh-mcp-client@0.1.0-rc.7
+
+# 必须在本仓库根目录运行；启动时才叠加项目配置。
+dsh --profile omp-tui --patch .dsh/context7.patch.yml
+```
+
+Context7 可匿名发现工具；如需使用 API Key，在项目根目录新建未提交的 `.env`，并设置
+`CONTEXT7_API_KEY=...`。DSH 会在启动时读取当前项目的 `.env`；可复制 `.env.example` 作为起点。
 
 ## 配置覆盖
 

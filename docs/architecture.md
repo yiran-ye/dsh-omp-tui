@@ -9,15 +9,19 @@ Web Runtime、Browser 或 headless runner。
 
 主插件的强制注入只有创建/恢复 Agent 必需的 `agentDefaultModel`、`agents` 与
 `sessions`。Tools、Approval、User Questions、Permission Presets、Compaction、
-Projection 和 Agent Presets 均通过 `ctx.get()` 可选发现。
+Projection、Agent Presets、Commands 和 Skills 均通过 `ctx.get()` 可选发现。
 
 ## 数据流
 
 ```text
 Editor submit
    │
-   ├─ idle ───── Agent.followup(UserMessage)
-   └─ running ── Agent.steer(UserMessage)
+   ├─ 本地 Slash ─── TUI 操作（Help、Session、Retry、退出）
+   ├─ 官方 Slash ─── ctx.commands.execute(agent, line, AbortSignal)
+   ├─ /skills ────── ctx.skills.list({ cwd, scope }) → 预填 /<skill-name>
+   ├─ /mcp ───────── ctx.tools.schemas(agent) → MCP 工具目录
+   ├─ idle ───────── Agent.followup(UserMessage)
+   └─ running ────── Agent.steer(UserMessage)
                        │
                        ▼
                  Session Event Log
@@ -38,6 +42,20 @@ Editor submit
 Transcript 投影的是 append-only Session Event Log，而不是提供给模型的 ordered
 surface。Compaction 的 `surfaceOp: { op: 'replace' }` 只改变模型上下文，TUI
 不会删除被遮蔽的历史；新 checkpoint 仅作为紧凑的 injected-context 记录追加。
+
+Slash 命令发现由 `ctx.commands.list(agent)` 提供。OMP TUI 将官方目录、本地命令和
+`ctx.skills.list({ cwd, scope: agent })` 返回的 `userInvocable` Skills 合并，再交给
+`CombinedAutocompleteProvider`：同名时本地命令保留自己的行为，Skill 名称仅在没有冲突时
+作为普通 `/<skill-name>` 补全项出现。`commands/change`、`skills/change`、`tools/change`、
+新 Session 与 Agent Preset 重组都会刷新目录。`/skills` 打开选择目录，选择后仅预填 Skill
+手势；已解析的官方命令通过 `ctx.commands.execute()` 执行，执行结果仅显示为 UI notice，
+不进入模型上下文；未注册的 Slash 输入仍作为普通 Agent 消息发送，以保留 Skill 手势等模型
+侧扩展入口。
+
+MCP 没有独立的 Harness 服务面：`@deepseek-ai/dsh-mcp-client` 发现 Server 工具后，会把它们
+注册到 `ctx.tools`，名称为 `mcp__<server>__<tool>`。`/mcp` 从当前 Agent 可见的
+`ctx.tools.schemas(agent)` 中筛选这些工具并显示目录；选择一个工具只会预填对它的任务描述，
+不会越过 Agent 直接发起 MCP 调用。
 
 ## Agent 生命周期
 
