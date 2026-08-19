@@ -7,8 +7,14 @@ class MemoryTerminal implements Terminal {
   kittyProtocolActive = false
   columns = 64
   rows = 24
+  private onInput: ((data: string) => void) | undefined
 
-  start(_onInput: (data: string) => void, _onResize: () => void): void {}
+  start(onInput: (data: string) => void, _onResize: () => void): void {
+    this.onInput = onInput
+  }
+  input(data: string): void {
+    this.onInput?.(data)
+  }
   stop(): void {}
   async drainInput(): Promise<void> {}
   write(_data: string): void {}
@@ -38,6 +44,7 @@ describe('Slash Command 分派', () => {
       actions: {
         send,
         cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
         newSession: async () => undefined,
         shutdown: async () => undefined,
       },
@@ -72,6 +79,7 @@ describe('Slash Command 分派', () => {
       actions: {
         send,
         cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
         newSession: async () => undefined,
         shutdown: async () => undefined,
       },
@@ -97,6 +105,7 @@ describe('Slash Command 分派', () => {
       actions: {
         send: vi.fn<(text: string) => void>(),
         cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
         newSession: async () => undefined,
         shutdown: async () => undefined,
       },
@@ -127,6 +136,7 @@ describe('Slash Command 分派', () => {
       actions: {
         send: vi.fn<(text: string) => void>(),
         cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
         newSession: async () => undefined,
         shutdown: async () => undefined,
       },
@@ -137,6 +147,58 @@ describe('Slash Command 分派', () => {
 
     mounted.app.prompt.input.onSubmit?.('/mcp')
     expect(store.getSnapshot().overlay).toMatchObject({ kind: 'catalog', title: 'MCP Tools' })
+    mounted.stop()
+  })
+
+  it('通过 /model 显示模型目录并提交选择', async () => {
+    const store = new TuiStore()
+    store.setSession('session-model', 'deepseek', 'deepseek-chat')
+    const terminal = new MemoryTerminal()
+    const selectModel = vi.fn(async (_provider: string, _model: string) => undefined)
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+      models: {
+        list: async () => ({
+          models: [
+            {
+              provider: 'openai',
+              providerName: 'OpenAI',
+              model: 'gpt-5.4',
+              name: 'GPT-5.4',
+              description: '适合复杂编码任务',
+            },
+            {
+              provider: 'deepseek',
+              providerName: 'DeepSeek',
+              model: 'deepseek-chat',
+              name: 'DeepSeek Chat',
+            },
+          ],
+          failures: [],
+        }),
+      },
+    })
+
+    mounted.app.prompt.input.onSubmit?.('/model')
+    await settle()
+    const overlay = store.getSnapshot().overlay
+    expect(overlay).toMatchObject({ kind: 'catalog', title: 'Models' })
+    if (overlay.kind !== 'catalog') throw new Error('expected model catalog')
+    expect(overlay.body).toContain('当前模型：deepseek/deepseek-chat')
+
+    terminal.input('\u001b[A')
+    terminal.input('\r')
+    await settle()
+    expect(selectModel).toHaveBeenCalledWith('openai', 'gpt-5.4')
     mounted.stop()
   })
 })

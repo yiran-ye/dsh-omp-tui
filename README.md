@@ -102,6 +102,7 @@ dsh --profile omp-tui --agent-preset code
 | `/tools` | 浏览当前 Session 的完整工具参数与结果 |
 | `/skills` | 浏览可由用户调用的 Skill；选择后预填 `/<skill-name>` |
 | `/mcp` | 浏览当前已连接 MCP Server 发现的工具；选择后预填工具名 |
+| `/model` | 显示当前模型，并从已注册 Provider 的目录中切换模型 |
 | `/clear` / `/new` | flush/dispose 当前 Agent，创建新 Session，并保留输入历史 |
 | `/retry` | 重新发送上一条用户任务 |
 | `/exit` / `/quit` | flush Session 后优雅退出 |
@@ -120,6 +121,10 @@ Skill 手势注入执行。
 `/mcp` 不会直接调用 MCP 工具。它从当前 Agent 可见的 `ctx.tools.schemas()` 中筛选
 `mcp__<server>__<tool>` 名称，并显示由 `@deepseek-ai/dsh-mcp-client` 发现的工具；模型会在
 后续任务中自行调用它们。MCP Client 未安装、未连接或没有发现工具时，`/mcp` 会明确提示。
+
+`/model` 读取当前 `ctx.llm` 已注册 Provider 的模型目录，并标示当前选择。选择模型会更新
+当前 Agent 的 Model Selection，因此正在运行的请求不受影响，新模型会在下一次模型请求时生效；
+后续 `/clear` 创建的新 Session 也会沿用该选择。若 Settings 服务可用，选择还会保存为默认模型。
 
 ### 本地 Context7 MCP
 

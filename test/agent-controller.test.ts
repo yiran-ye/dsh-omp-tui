@@ -102,16 +102,17 @@ function harness() {
   const stopUi = vi.fn(async () => undefined)
   const requestExit = vi.fn()
   const selection: ModelSelection = { provider: 'deepseek', model: 'deepseek-chat' }
+  const saveSelection = vi.fn(async (_next: ModelSelection) => undefined)
   const controller = new AgentController({
     agents: registry,
     sessions: { flush },
-    defaultModel: { currentSelection: () => selection },
+    defaultModel: { currentSelection: () => selection, saveSelection },
     eventSource: new NoopEvents(),
     cwd: '/workspace',
     stopUi,
     requestExit,
   })
-  return { controller, agents, created, resumed, disposed, flush, stopUi, requestExit }
+  return { controller, agents, created, resumed, disposed, flush, stopUi, requestExit, saveSelection }
 }
 
 describe('AgentController', () => {
@@ -144,6 +145,20 @@ describe('AgentController', () => {
     agent.status = 'running'
     controller.cancel()
     expect(agent.cancelCount).toBe(1)
+  })
+
+  it('切换模型会更新当前选择，并供后续新 Session 沿用', async () => {
+    const { controller, created, saveSelection } = harness()
+    await controller.start()
+
+    await controller.selectModel('openai', 'gpt-5.4')
+
+    expect(controller.store.getSnapshot()).toMatchObject({ provider: 'openai', model: 'gpt-5.4' })
+    expect(saveSelection).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-5.4' })
+    expect(controller.store.getSnapshot().notice).toBeUndefined()
+
+    await controller.newSession()
+    expect(created[1]?.agentOptions).toEqual({ provider: 'openai', model: 'gpt-5.4' })
   })
 
   it('shutdown 只执行一次，并按 flush、停止 UI、dispose、appExit 收敛', async () => {

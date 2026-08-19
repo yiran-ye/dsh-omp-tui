@@ -1,5 +1,6 @@
 import { ProcessTerminal, TuiMainScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
 import type { InteractionQueue } from '../runtime/interaction-queue.js'
+import type { ModelCatalogItem, ModelCatalogPort } from '../runtime/model-catalog.js'
 import type { ToolLookup } from '../runtime/tool-presentation.js'
 import { ToolPresenter } from '../runtime/tool-presentation.js'
 import { TerminalRestore, assertInteractiveTerminal } from '../runtime/terminal-restore.js'
@@ -26,6 +27,7 @@ import type { CatalogOverlayItem } from './state.js'
 export interface TuiActions {
   send(text: string): void
   cancel(): void
+  selectModel(provider: string, model: string): Promise<void>
   newSession(): Promise<void>
   shutdown(): Promise<void>
 }
@@ -38,6 +40,7 @@ export interface MountOptions {
   readonly commands?: SlashCommandRegistry
   readonly skills?: SkillRegistry
   readonly mcp?: McpToolRegistry
+  readonly models?: ModelCatalogPort
   readonly maxToolLines?: number
   readonly terminal?: Terminal
   readonly requireTty?: boolean
@@ -60,6 +63,7 @@ export function mountTui(options: MountOptions): MountedTui {
   let activeSlashCommand: AbortController | undefined
   let activeSkillAutocomplete: AbortController | undefined
   let activeSkillPicker: AbortController | undefined
+  let activeModelPicker: AbortController | undefined
   let catalogSelection: ((value: string) => void) | undefined
   let catalogId = 0
   let slashCommandsRevision = 0
@@ -127,11 +131,19 @@ export function mountTui(options: MountOptions): MountedTui {
     body: string,
     items: readonly CatalogOverlayItem[],
     onSelect: (value: string) => void,
+    selected = 0,
   ): void => {
     catalogSelection = onSelect
     catalogId += 1
     options.store.setNotice(undefined)
-    options.store.setOverlay({ kind: 'catalog', id: catalogId, title, body, items })
+    options.store.setOverlay({
+      kind: 'catalog',
+      id: catalogId,
+      title,
+      body,
+      items,
+      ...(selected === 0 ? {} : { selected }),
+    })
   }
   const openSkills = (): void => {
     const registry = options.skills
@@ -206,6 +218,69 @@ export function mountTui(options: MountOptions): MountedTui {
       },
     )
   }
+  const openModels = (): void => {
+    const registry = options.models
+    if (registry === undefined) {
+      options.store.setNotice('模型目录服务未挂载。')
+      return
+    }
+    activeModelPicker?.abort()
+    const controller = new AbortController()
+    activeModelPicker = controller
+    options.store.setNotice('正在读取可切换的模型…')
+    void registry.list(controller.signal)
+      .then((catalog) => {
+        if (stopped || controller.signal.aborted || activeModelPicker !== controller) return
+        if (catalog.models.length === 0) {
+          const failures = catalog.failures.length === 0 ? '' : `：${catalog.failures.join('；')}`
+          options.store.setNotice(`未检测到可切换模型${failures}`)
+          return
+        }
+        const snapshot = options.store.getSnapshot()
+        const current = [snapshot.provider, snapshot.model].filter(Boolean).join('/') || '未知'
+        const modelsByValue = new Map<string, ModelCatalogItem>()
+        let selectedIndex = 0
+        const items = catalog.models.map((candidate, index) => {
+          const value = String(index)
+          modelsByValue.set(value, candidate)
+          const active = candidate.provider === snapshot.provider && candidate.model === snapshot.model
+          if (active) selectedIndex = index
+          const label = candidate.name === candidate.model
+            ? candidate.model
+            : `${candidate.name} · ${candidate.model}`
+          return {
+            value,
+            label: `${active ? '✓ ' : ''}${label}`,
+            ...(candidate.description === undefined
+              ? { description: candidate.providerName }
+              : { description: `${candidate.providerName} · ${candidate.description}` }),
+          }
+        })
+        const failures = catalog.failures.length === 0 ? '' : `\n\n未能读取：${catalog.failures.join('；')}`
+        openCatalog(
+          'Models',
+          `当前模型：${current}\n选择后会在下一次模型请求生效。${failures}`,
+          items,
+          (value) => {
+            const selectedModel = modelsByValue.get(value)
+            if (selectedModel === undefined) {
+              options.store.setNotice('模型目录已更新，请重新打开 /model。')
+              return
+            }
+            runAction(options.actions.selectModel(selectedModel.provider, selectedModel.model), '切换模型')
+          },
+          selectedIndex,
+        )
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && !stopped) {
+          options.store.setNotice(`读取模型目录失败：${error instanceof Error ? error.message : String(error)}`)
+        }
+      })
+      .finally(() => {
+        if (activeModelPicker === controller) activeModelPicker = undefined
+      })
+  }
   const retryLastPrompt = (): void => {
     if (options.store.getSnapshot().status === 'running') {
       options.store.setNotice('当前任务仍在运行；请先取消后再重试。')
@@ -266,6 +341,8 @@ export function mountTui(options: MountOptions): MountedTui {
       openSkills()
     } else if (command === 'mcp') {
       openMcpTools()
+    } else if (command === 'model') {
+      openModels()
     } else if (command === 'clear' || command === 'new') {
       runAction(options.actions.newSession(), command === 'clear' ? '/clear' : '/new', refreshSlashCommands)
     } else if (command === 'retry') {
@@ -324,7 +401,7 @@ export function mountTui(options: MountOptions): MountedTui {
     } else if (overlay.kind === 'catalog') {
       overlayToken = token
       overlayHandle = tui.showOverlay(
-        new CatalogDialog(overlay.title, overlay.body, overlay.items, selectCatalog, closeCatalog),
+        new CatalogDialog(overlay.title, overlay.body, overlay.items, selectCatalog, closeCatalog, overlay.selected),
         { width: '75%', minWidth: 36, maxHeight: '75%', anchor: 'center', margin: 1 },
       )
     } else if (overlay.kind === 'tools' || overlay.kind === 'tool-detail') {
@@ -378,6 +455,7 @@ export function mountTui(options: MountOptions): MountedTui {
       activeSlashCommand?.abort()
       activeSkillAutocomplete?.abort()
       activeSkillPicker?.abort()
+      activeModelPicker?.abort()
       removeInputListener()
       removeOverlayStoreListener()
       removeInteractionListener?.()

@@ -32,6 +32,7 @@ describe('输入策略与 Slash Commands', () => {
     expect(parseSlashCommand('/TOOLS now')).toBe('tools')
     expect(parseSlashCommand('/skills')).toBe('skills')
     expect(parseSlashCommand('/mcp')).toBe('mcp')
+    expect(parseSlashCommand('/model')).toBe('model')
     expect(parseSlashCommand('/clear')).toBe('clear')
     expect(parseSlashCommand('/new')).toBe('new')
     expect(parseSlashCommand('/retry')).toBe('retry')
@@ -49,7 +50,7 @@ describe('输入策略与 Slash Commands', () => {
 
     expect(suggestions?.prefix).toBe('/')
     expect(suggestions?.items.map((item) => item.value)).toEqual([
-      'help', 'tools', 'skills', 'mcp', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
+      'help', 'tools', 'skills', 'mcp', 'model', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
     ])
   })
 
@@ -64,7 +65,7 @@ describe('输入策略与 Slash Commands', () => {
     ])
 
     expect(commands.map((command) => command.name)).toEqual([
-      'goal', 'help', 'compact', 'tools', 'skills', 'mcp', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
+      'goal', 'help', 'compact', 'tools', 'skills', 'mcp', 'model', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
       'release-notes',
     ])
     expect(commands.find((command) => command.name === 'goal')).toMatchObject({ argumentHint: '<objective>' })

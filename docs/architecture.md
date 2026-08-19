@@ -20,6 +20,7 @@ Editor submit
    ├─ 官方 Slash ─── ctx.commands.execute(agent, line, AbortSignal)
    ├─ /skills ────── ctx.skills.list({ cwd, scope }) → 预填 /<skill-name>
    ├─ /mcp ───────── ctx.tools.schemas(agent) → MCP 工具目录
+   ├─ /model ─────── ctx.llm.listProviders/listModels → ModelSelectionRef
    ├─ idle ───────── Agent.followup(UserMessage)
    └─ running ────── Agent.steer(UserMessage)
                        │
@@ -56,6 +57,11 @@ MCP 没有独立的 Harness 服务面：`@deepseek-ai/dsh-mcp-client` 发现 Ser
 注册到 `ctx.tools`，名称为 `mcp__<server>__<tool>`。`/mcp` 从当前 Agent 可见的
 `ctx.tools.schemas(agent)` 中筛选这些工具并显示目录；选择一个工具只会预填对它的任务描述，
 不会越过 Agent 直接发起 MCP 调用。
+
+`/model` 读取已注册 Provider 的 advisory 模型目录；某个 Provider 读取失败不会隐藏其他
+Provider 的模型。选择项直接更新当前 Agent 持有的 `ModelSelectionRef.current`，由 Harness 在
+下一次 prompt assembly 时快照，因此不会拆分正在进行中的模型请求。选择同时成为本进程后续
+新 Session 的默认值，并在可用时通过 `agentDefaultModel.saveSelection()` 持久化。
 
 ## Agent 生命周期
 

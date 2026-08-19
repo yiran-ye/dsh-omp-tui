@@ -192,9 +192,10 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('tools')
     expect(plain).toContain('skills')
     expect(plain).toContain('mcp')
+    expect(plain).toContain('model')
     expect(plain).toContain('clear')
 
-    for (let index = 0; index < 9; index++) app.prompt.input.handleInput('\u001b[B')
+    for (let index = 0; index < 10; index++) app.prompt.input.handleInput('\u001b[B')
     const selectedPlain = app.render(64).map(stripTerminalSequences).join('\n')
     expect(selectedPlain).toContain('quit')
     app.prompt.input.handleInput('\r')

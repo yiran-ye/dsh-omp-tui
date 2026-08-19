@@ -43,6 +43,7 @@ export const SLASH_COMMAND_AUTOCOMPLETE_ITEMS = [
   { name: 'tools', description: '打开工具详情浏览器' },
   { name: 'skills', description: '浏览并选择可由用户调用的 Skill' },
   { name: 'mcp', description: '浏览已连接的 MCP 工具' },
+  { name: 'model', description: '显示并切换当前 Agent 可用的模型' },
   { name: 'clear', description: '创建新 Session（保留输入历史）' },
   { name: 'new', description: '创建新 Session（/clear 的别名）' },
   { name: 'retry', description: '重新发送上一条用户任务' },

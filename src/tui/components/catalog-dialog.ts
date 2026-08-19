@@ -14,8 +14,10 @@ export class CatalogDialog implements Component {
     items: readonly CatalogOverlayItem[],
     onSelect: (value: string) => void,
     onCancel: () => void,
+    selected = 0,
   ) {
     this.choices = new SelectList([...items], Math.min(12, Math.max(2, items.length)), selectListTheme)
+    this.choices.setSelectedIndex(selected)
     this.choices.onSelect = (item) => onSelect(item.value)
     this.choices.onCancel = onCancel
   }

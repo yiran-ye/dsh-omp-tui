@@ -38,6 +38,7 @@ export interface SessionStorePort {
 
 export interface DefaultModelPort {
   currentSelection(): ModelSelection
+  saveSelection?(selection: ModelSelection): Promise<void>
 }
 
 export interface AgentPresetPort {
@@ -67,6 +68,8 @@ export class AgentController {
   readonly store: TuiStore
   private handle: ControlledAgentHandle | undefined
   private binding: AgentSessionBinding | undefined
+  private modelSelection: ModelSelectionRef | undefined
+  private selectedModelOverride: ModelSelection | undefined
   private startup: StartAgentOptions = {}
   private lifecycleTail: Promise<void> = Promise.resolve()
   private closing = false
@@ -108,6 +111,36 @@ export class AgentController {
     if (agent?.status === 'running') agent.cancel({ kind: 'user' })
   }
 
+  selectModel(provider: string, model: string): Promise<void> {
+    return this.serializeLifecycle(async () => {
+      this.assertOpen()
+      if (provider.length === 0 || model.length === 0) throw new Error('Provider 和模型不能为空。')
+      const handle = this.handle
+      const selectionRef = this.modelSelection
+      if (handle === undefined || selectionRef === undefined) {
+        throw new Error('Agent Controller 尚未启动。')
+      }
+      const current = selectionRef.current
+      const selection: ModelSelection = current?.provider === provider && current.model === model
+        ? {
+            provider: current.provider,
+            model: current.model,
+            ...(current.reasoningEffort === undefined ? {} : { reasoningEffort: current.reasoningEffort }),
+          }
+        : { provider, model }
+      selectionRef.current = selection
+      this.selectedModelOverride = selection
+      this.store.setSession(handle.agent.id, selection.provider, selection.model)
+      try {
+        await this.options.defaultModel.saveSelection?.(selection)
+      } catch (error) {
+        this.store.setNotice(
+          `已切换模型为 ${provider}/${model}；无法保存为默认模型：${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    })
+  }
+
   newSession(): Promise<ControlledAgent> {
     if (this.closing) return Promise.reject(new Error('Agent Controller 正在关闭。'))
     return this.serializeLifecycle(async () => {
@@ -139,7 +172,12 @@ export class AgentController {
   }
 
   private async attach(resume: string | undefined): Promise<ControlledAgent> {
-    const selection = this.options.defaultModel.currentSelection()
+    const sourceSelection = this.selectedModelOverride ?? this.options.defaultModel.currentSelection()
+    const selection: ModelSelection = {
+      provider: sourceSelection.provider,
+      model: sourceSelection.model,
+      ...(sourceSelection.reasoningEffort === undefined ? {} : { reasoningEffort: sourceSelection.reasoningEffort }),
+    }
     let resolvedPreset: { readonly id: string } | undefined
     if (resume === undefined && this.options.presets !== undefined) {
       try {
@@ -151,8 +189,8 @@ export class AgentController {
       this.store.setNotice('当前 Profile 未挂载 Agent Preset 服务，已忽略 --agent-preset。')
     }
 
+    const selectionRef: ModelSelectionRef = { current: selection, assembled: undefined }
     const setup = async (agentCtx: Context): Promise<void> => {
-      const selectionRef: ModelSelectionRef = { current: selection, assembled: undefined }
       installModelSelection(agentCtx, selectionRef)
       if (resolvedPreset !== undefined) await this.options.presets?.mount(agentCtx, resolvedPreset.id)
     }
@@ -174,6 +212,7 @@ export class AgentController {
         })
 
     this.handle = handle
+    this.modelSelection = selectionRef
     await handle.agent.whenIdle()
     this.binding = new AgentSessionBinding(handle.agent, this.store, this.options.eventSource)
     this.store.setSession(handle.agent.id, selection.provider, selection.model)
@@ -185,6 +224,7 @@ export class AgentController {
     const binding = this.binding
     this.handle = undefined
     this.binding = undefined
+    this.modelSelection = undefined
     if (handle === undefined) {
       binding?.disconnect()
       if (stopUi) await this.options.stopUi?.()

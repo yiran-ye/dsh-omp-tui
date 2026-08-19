@@ -82,6 +82,7 @@ export type OverlayState =
     readonly title: string
     readonly body?: string
     readonly items: readonly CatalogOverlayItem[]
+    readonly selected?: number
   }
   | { readonly kind: 'tools'; readonly selected: number }
   | { readonly kind: 'tool-detail'; readonly callId: string; readonly scroll: number }

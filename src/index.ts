@@ -20,6 +20,7 @@ import { AgentController } from './runtime/agent-controller.js'
 import { createCordisEventSource } from './runtime/agent-session.js'
 import { installHarnessInteractions, type HarnessInteractionInstallation } from './runtime/harness-interactions.js'
 import { InteractionQueue } from './runtime/interaction-queue.js'
+import { createModelCatalog } from './runtime/model-catalog.js'
 import { ProcessSafety, assertInteractiveTerminal } from './runtime/terminal-restore.js'
 import { mountTui, type MountedTui } from './tui/mount.js'
 
@@ -66,6 +67,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     await ctx.get('loader')?.await()
     const presets = ctx.get('agentPresets')
     const tools = ctx.get('tools')
+    const llm = ctx.get('llm')
     const commands = ctx.get('commands')
     const skills = ctx.get('skills')
     interactions = new InteractionQueue()
@@ -140,6 +142,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
           .map((tool) => ({ name: tool.name, description: tool.description }))
       },
     }
+    const modelCatalog = llm === undefined ? undefined : createModelCatalog(llm)
     mounted = mountTui({
       store: controller.store,
       actions: {
@@ -148,6 +151,9 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         },
         cancel: () => {
           controller?.cancel()
+        },
+        selectModel: async (provider, model) => {
+          await controller?.selectModel(provider, model)
         },
         newSession: async () => {
           await controller?.newSession()
@@ -160,6 +166,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       ...(commandRegistry === undefined ? {} : { commands: commandRegistry }),
       ...(skillRegistry === undefined ? {} : { skills: skillRegistry }),
       ...(mcpRegistry === undefined ? {} : { mcp: mcpRegistry }),
+      ...(modelCatalog === undefined ? {} : { models: modelCatalog }),
       interactions,
       ...(config.maxToolLines === undefined ? {} : { maxToolLines: config.maxToolLines }),
     })
