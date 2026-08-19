@@ -62,6 +62,56 @@ describe('备用屏挂载', () => {
     expect(stripTerminalSequences(terminal.output)).toContain('dsh-omp-tui v')
     expect(stripTerminalSequences(terminal.output)).toContain('Closing session…')
   })
+
+  it('显式主滚动容器保持向上滚动能力', () => {
+    const terminal = new MemoryTerminal()
+    terminal.rows = 8
+    const store = new TuiStore([
+      {
+        type: 'user/message',
+        seq: 0,
+        time: 0,
+        data: {
+          content: [{ type: 'text', text: Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 行`).join('\n') }],
+          source: { kind: 'user' },
+        },
+      },
+    ])
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    mounted.tui.renderNow(true)
+    expect(mounted.tui.isFollowingOutput).toBe(true)
+    expect(stripTerminalSequences(terminal.output)).toContain('▐')
+    const bottom = mounted.tui.viewportTop
+    terminal.input('\u001b[<64;1;1M')
+    mounted.tui.renderNow()
+
+    expect(mounted.tui.viewportTop).toBe(bottom - 3)
+    store.appendEvent({
+      type: 'user/message',
+      seq: 1,
+      time: 1,
+      data: { content: [{ type: 'text', text: '滚动期间的新输出' }], source: { kind: 'user' } },
+    })
+    expect(mounted.app.render(64).map(stripTerminalSequences).join('\n')).not.toContain('滚动期间的新输出')
+
+    mounted.tui.scrollToBottom()
+    mounted.tui.renderNow()
+
+    expect(mounted.app.render(64).map(stripTerminalSequences).join('\n')).toContain('滚动期间的新输出')
+    mounted.stop()
+  })
 })
 
 describe('Slash Command 分派', () => {

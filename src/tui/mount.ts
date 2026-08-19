@@ -22,7 +22,9 @@ import { CatalogDialog } from './components/catalog-dialog.js'
 import { HelpDialog } from './components/help-dialog.js'
 import { QuestionDialog } from './components/question-dialog.js'
 import { BoundToolDetailDialog } from './components/tool-detail-dialog.js'
+import { TranscriptScrollView } from './components/transcript-scroll-view.js'
 import type { CatalogOverlayItem } from './state.js'
+import { theme } from './theme.js'
 
 export interface TuiActions {
   send(text: string): void
@@ -56,7 +58,7 @@ export interface MountedTui {
 export function mountTui(options: MountOptions): MountedTui {
   if (options.requireTty !== false && options.terminal === undefined) assertInteractiveTerminal()
   const terminal = options.terminal ?? new ProcessTerminal()
-  const tui = new TuiAltScreen(terminal, true)
+  const tui = new TuiAltScreen(terminal, true, undefined, { wheelScrollLines: 3 })
   const presenter = new ToolPresenter(options.tools, options.maxToolLines ?? 8)
   const policy = new InputPolicy()
   let stopped = false
@@ -358,7 +360,12 @@ export function mountTui(options: MountOptions): MountedTui {
 
   const app = new App(tui, options.store, presenter, submit)
   refreshSlashCommands()
-  tui.addChild(app)
+  tui.setLayoutRoot(new TranscriptScrollView(app, {
+    follow: 'end',
+    primary: true,
+    scrollbar: 'always',
+    scrollbarStyle: () => theme.accent('▐'),
+  }, (following) => app.setFollowingOutput(following)))
   const restore = new TerminalRestore(() => tui.stop())
   let overlayHandle: OverlayHandle | undefined
   let overlayToken = ''

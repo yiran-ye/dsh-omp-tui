@@ -11,7 +11,7 @@ export class ToolCard implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width)
-    const presented = this.presenter.present(this.entry)
+    const presented = this.presenter.presentSummary(this.entry)
     const marker = this.entry.status === 'running'
       ? theme.warning('●')
       : this.entry.status === 'success'

@@ -1,14 +1,16 @@
 import {
+  Key,
   stripTerminalSequences,
   TuiMainScreen,
   type Terminal,
   visibleWidth,
 } from '@earendil-works/pi-tui'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ToolPresenter } from '../src/runtime/tool-presentation.js'
 import { App } from '../src/tui/components/app.js'
 import { StatusLine } from '../src/tui/components/status-line.js'
 import { ToolCard } from '../src/tui/components/tool-card.js'
+import { ToolDetailDialog } from '../src/tui/components/tool-detail-dialog.js'
 import { UserBlock } from '../src/tui/components/user-block.js'
 import { Welcome } from '../src/tui/components/welcome.js'
 import { HelpDialog } from '../src/tui/components/help-dialog.js'
@@ -103,8 +105,11 @@ describe('OMP 风格渲染', () => {
     }
     const presenter = new ToolPresenter(undefined, 4)
     const presented = presenter.present(entry)
+    const summary = presenter.presentSummary(entry)
     expect(presented.summaryLines.at(-1)).toContain('more lines')
     expect(presented.detailLines.length).toBeGreaterThan(presented.summaryLines.length)
+    expect(summary.summaryLines).toEqual(presented.summaryLines)
+    expect(summary.detailLines).toEqual([])
     assertWidth(new ToolCard(entry, presenter).render(24), 24)
   })
 
@@ -133,6 +138,65 @@ describe('OMP 风格渲染', () => {
       title: 'git status',
       summaryLines: ['clean'],
     })
+  })
+
+  it('静态 Transcript 的重复渲染不会重新处理工具结果', () => {
+    const terminal = new MemoryTerminal()
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore([
+      {
+        type: 'tool/call',
+        seq: 0,
+        time: 0,
+        data: { callId: 'cache-call', name: 'bash', arguments: '{"cmd":"pwd"}' },
+      },
+      {
+        type: 'tool/result',
+        seq: 1,
+        time: 1,
+        data: {
+          message: {
+            content: [{ type: 'tool-result', toolCallId: 'cache-call', content: [{ type: 'text', text: '/tmp' }] }],
+          },
+        },
+      },
+    ])
+    const presenter = new ToolPresenter(undefined)
+    const app = new App(tui, store, presenter, () => undefined)
+    const renderToolCard = vi.spyOn(ToolCard.prototype, 'render')
+
+    const first = app.render(48)
+    const second = app.render(48)
+
+    expect(renderToolCard).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+    renderToolCard.mockRestore()
+    app.dispose()
+  })
+
+  it('Tool Detail 滚动时复用已展开的内容', () => {
+    const entry: ToolTranscriptEntry = {
+      kind: 'tool',
+      key: 'tool:detail-cache',
+      seq: 4,
+      callId: 'detail-cache',
+      name: 'bash',
+      arguments: '{"cmd":"long-output"}',
+      result: Array.from({ length: 200 }, (_, index) => `line ${index + 1}`).join('\n'),
+      resultMeta: undefined,
+      status: 'success',
+      startedAt: 10,
+      durationMs: 20,
+    }
+    const presenter = new ToolPresenter(undefined)
+    const dialog = new ToolDetailDialog([entry], 0, () => undefined)
+    const present = vi.spyOn(presenter, 'present')
+
+    dialog.render(48, presenter)
+    dialog.handleInput(Key.pageDown)
+    dialog.render(48, presenter)
+
+    expect(present).toHaveBeenCalledTimes(1)
   })
 
   it('固定尺寸主屏组合渲染保持宽度并包含标识', () => {
