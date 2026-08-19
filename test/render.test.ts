@@ -144,4 +144,30 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('输入任务…')
     app.dispose()
   })
+
+  it('Slash 补全菜单会完整显示且可选择第五项', async () => {
+    const terminal = new MemoryTerminal()
+    terminal.columns = 64
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore()
+    const submitted: string[] = []
+    const app = new App(tui, store, new ToolPresenter(undefined), (text) => submitted.push(text))
+    tui.addChild(app)
+    tui.setFocus(app.prompt.input)
+
+    app.prompt.input.handleInput('/')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    const plain = app.render(64).map(stripTerminalSequences).join('\n')
+    expect(plain).toContain('help')
+    expect(plain).toContain('tools')
+    expect(plain).toContain('clear')
+    expect(plain).toContain('exit')
+    expect(plain).toContain('quit')
+
+    for (let index = 0; index < 4; index++) app.prompt.input.handleInput('\u001b[B')
+    app.prompt.input.handleInput('\r')
+    expect(submitted).toEqual(['/quit'])
+    app.dispose()
+  })
 })

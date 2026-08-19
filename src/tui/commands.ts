@@ -1,15 +1,21 @@
-import { Key, matchesKey } from '@earendil-works/pi-tui'
+import { Key, matchesKey, type SlashCommand as AutocompleteSlashCommand } from '@earendil-works/pi-tui'
 import type { AgentStatus } from '@deepseek-ai/dsh-agent'
 
-export type SlashCommand = 'help' | 'tools' | 'clear' | 'exit' | 'quit'
+export const SLASH_COMMAND_AUTOCOMPLETE_ITEMS = [
+  { name: 'help', description: '显示命令和快捷键' },
+  { name: 'tools', description: '打开工具详情浏览器' },
+  { name: 'clear', description: '创建新 Session（保留输入历史）' },
+  { name: 'exit', description: '优雅退出' },
+  { name: 'quit', description: '优雅退出' },
+] as const satisfies readonly AutocompleteSlashCommand[]
+
+export type SlashCommand = (typeof SLASH_COMMAND_AUTOCOMPLETE_ITEMS)[number]['name']
 
 export function parseSlashCommand(text: string): SlashCommand | undefined {
   const normalized = text.trim().toLowerCase()
   if (!normalized.startsWith('/')) return undefined
   const command = normalized.slice(1).split(/\s+/, 1)[0]
-  return command === 'help' || command === 'tools' || command === 'clear' || command === 'exit' || command === 'quit'
-    ? command
-    : undefined
+  return SLASH_COMMAND_AUTOCOMPLETE_ITEMS.find((item) => item.name === command)?.name
 }
 
 export interface InputContext {

@@ -1,6 +1,12 @@
 import type { AgentStatus } from '@deepseek-ai/dsh-agent'
 import { describe, expect, it, vi } from 'vitest'
-import { InputPolicy, parseSlashCommand, type InputContext } from '../src/tui/commands.js'
+import { CombinedAutocompleteProvider } from '@earendil-works/pi-tui'
+import {
+  InputPolicy,
+  parseSlashCommand,
+  SLASH_COMMAND_AUTOCOMPLETE_ITEMS,
+  type InputContext,
+} from '../src/tui/commands.js'
 
 function context(status: AgentStatus, input = '') {
   return {
@@ -24,6 +30,16 @@ describe('输入策略与 Slash Commands', () => {
     expect(parseSlashCommand('/exit')).toBe('exit')
     expect(parseSlashCommand('/quit')).toBe('quit')
     expect(parseSlashCommand('/unknown')).toBeUndefined()
+  })
+
+  it('输入 / 时列出全部已注册命令', async () => {
+    const provider = new CombinedAutocompleteProvider([...SLASH_COMMAND_AUTOCOMPLETE_ITEMS], process.cwd())
+    const suggestions = await provider.getSuggestions(['/'], 0, 1, {
+      signal: new AbortController().signal,
+    })
+
+    expect(suggestions?.prefix).toBe('/')
+    expect(suggestions?.items.map((item) => item.value)).toEqual(['help', 'tools', 'clear', 'exit', 'quit'])
   })
 
   it('Ctrl+C 在 running 时取消任务', () => {
