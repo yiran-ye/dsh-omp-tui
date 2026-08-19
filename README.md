@@ -43,7 +43,7 @@ Web Server，也不包含 Web/Browser、JSON-RPC、ACP、独立 Agent Runtime �
 
 ```bash
 npm install -g @deepseek-ai/dsh
-dsh plugin --profile omp-tui add /absolute/path/to/dsh-omp-tui
+dsh plugin --profile omp-tui add https://github.com/yiran-ye/dsh-omp-tui/releases/download/v0.1.0/dsh-omp-tui.tgz
 dsh --profile omp-tui
 ```
 
