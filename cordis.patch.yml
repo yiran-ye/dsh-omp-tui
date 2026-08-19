@@ -1,0 +1,33 @@
+# Native terminal front door layered directly over @deepseek-ai/dsh-base.
+# No Host, HTTP, API proxy, web runtime, browser, headless runner, or client is mounted.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+# Module reload output conflicts with the terminal renderer.
+- id: hmr
+  disabled: true
+
+- insert:
+    - id: omp-tui-startup
+      name: dsh-omp-tui/startup
+
+    - id: omp-tui
+      name: dsh-omp-tui
+      inject: [ompTuiStartup]
+      config:
+        resume: !!js ctx.ompTuiStartup.resume
+        agentPreset: !!js ctx.ompTuiStartup.agentPreset
+
+    # dsh-base owns the projection registry; this unit supplies turn/step stats.
+    - id: omp-tui-session-stats
+      name: '@deepseek-ai/dsh-session-stats'
+
+    # dsh-base does not mount the preset roster itself in rc.7.
+    # dsh launcher recognises this canonical id and injects built-in preset roots.
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard

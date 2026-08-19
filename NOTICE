@@ -1,0 +1,14 @@
+dsh-omp-tui
+===========
+
+Copyright (c) 2026 dsh-omp-tui contributors.
+
+This project studied and adapted architectural patterns from
+tomowang/dsh-tui (https://github.com/tomowang/dsh-tui), licensed under the MIT
+License. Adapted areas are limited to the DeepSeek Harness bundle/startup
+composition, session-ID normalization, event-log projection concepts, Agent
+lifecycle sequencing, and the shared approval/question FIFO design. The UI was
+rewritten for @earendil-works/pi-tui and contains no Ink or React runtime.
+
+tomowang/dsh-tui copyright notices and its MIT license remain applicable to
+the portions described above.
