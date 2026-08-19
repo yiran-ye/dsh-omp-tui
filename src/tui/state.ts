@@ -50,7 +50,15 @@ export interface ToolTranscriptEntry {
   readonly durationMs: number | undefined
 }
 
-export type TranscriptEntry = UserTranscriptEntry | AssistantTranscriptEntry | ToolTranscriptEntry
+export interface ErrorTranscriptEntry {
+  readonly kind: 'error'
+  readonly key: string
+  readonly seq: number
+  readonly text: string
+  readonly code?: string
+}
+
+export type TranscriptEntry = UserTranscriptEntry | AssistantTranscriptEntry | ToolTranscriptEntry | ErrorTranscriptEntry
 
 export interface HarnessStateSnapshot {
   readonly permissionPreset?: string

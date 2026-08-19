@@ -1,5 +1,6 @@
 import type {
   AssistantTranscriptEntry,
+  ErrorTranscriptEntry,
   SessionEventLike,
   StreamBlock,
   ToolTranscriptEntry,
@@ -226,6 +227,22 @@ function reduceToolResult(snapshot: TuiSnapshot, event: SessionEventLike): TuiSn
   })
 }
 
+function turnErrorEntry(event: SessionEventLike): ErrorTranscriptEntry | undefined {
+  if (!isRecord(event.data)) return undefined
+  const reason = isRecord(event.data.reason) ? event.data.reason : undefined
+  if (reason === undefined || stringField(reason, 'kind') !== 'error') return undefined
+  const error = isRecord(reason.error) ? reason.error : reason
+  const message = stringField(error, 'message') ?? '请求失败。'
+  const code = stringField(error, 'code')
+  return {
+    kind: 'error',
+    key: `error:${event.seq}`,
+    seq: event.seq,
+    text: message,
+    ...(code === undefined ? {} : { code }),
+  }
+}
+
 function updateHarness(
   snapshot: TuiSnapshot,
   key: 'permissionPreset' | 'sandboxMode' | 'approvalPolicy' | 'agentPreset',
@@ -259,9 +276,12 @@ export function reduceSessionEvent(current: TuiSnapshot, event: SessionEventLike
     case 'turn/start':
       if (isRecord(event.data)) snapshot = { ...snapshot, currentTurn: numberField(event.data, 'turn') }
       break
-    case 'turn/end':
+    case 'turn/end': {
+      const failure = turnErrorEntry(event)
+      if (failure !== undefined) snapshot = upsertTranscript(snapshot, failure)
       snapshot = { ...snapshot, currentTurn: undefined, currentStep: undefined }
       break
+    }
     case 'step/start':
       if (isRecord(event.data)) snapshot = { ...snapshot, currentStep: numberField(event.data, 'step') }
       break

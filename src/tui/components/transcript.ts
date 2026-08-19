@@ -3,6 +3,7 @@ import type { ToolPresenter } from '../../runtime/tool-presentation.js'
 import type { TuiSnapshot } from '../state.js'
 import { AssistantBlock } from './assistant-block.js'
 import { fitLines } from './common.js'
+import { ErrorBlock } from './error-block.js'
 import { ToolCard } from './tool-card.js'
 import { UserBlock } from './user-block.js'
 
@@ -20,7 +21,9 @@ export class Transcript implements Component {
         ? new UserBlock(entry)
         : entry.kind === 'assistant'
           ? new AssistantBlock(entry)
-          : new ToolCard(entry, this.tools)
+          : entry.kind === 'tool'
+            ? new ToolCard(entry, this.tools)
+            : new ErrorBlock(entry)
       lines.push(...component.render(safeWidth))
     }
     return fitLines(lines, safeWidth)

@@ -115,6 +115,33 @@ describe('Session Event reducer', () => {
     })
   })
 
+  it('将 turn/end 中的请求错误投影为可见条目', () => {
+    const store = new TuiStore([
+      event(0, 'user/message', {
+        content: [{ type: 'text', text: '你好' }],
+        source: { kind: 'user' },
+      }),
+      event(1, 'turn/end', {
+        turn: 1,
+        reason: {
+          kind: 'error',
+          error: {
+            code: 'QUOTA',
+            message: 'OpenAI API error (429): Allocated quota exceeded.',
+          },
+        },
+      }),
+    ])
+
+    expect(store.getSnapshot().transcript).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'error',
+        code: 'QUOTA',
+        text: 'OpenAI API error (429): Allocated quota exceeded.',
+      }),
+    ]))
+  })
+
   it('compaction 的 surface replacement 保留人类 transcript 历史', () => {
     const store = new TuiStore([
       event(0, 'user/message', {

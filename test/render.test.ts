@@ -146,6 +146,34 @@ describe('OMP 风格渲染', () => {
     app.dispose()
   })
 
+  it('请求失败会在主屏 Transcript 中明确显示', () => {
+    const terminal = new MemoryTerminal()
+    terminal.columns = 48
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore([
+      {
+        type: 'turn/end',
+        seq: 0,
+        time: 0,
+        data: {
+          turn: 1,
+          reason: {
+            kind: 'error',
+            error: { code: 'QUOTA', message: 'Allocated quota exceeded.' },
+          },
+        },
+      },
+    ])
+    const app = new App(tui, store, new ToolPresenter(undefined), () => undefined)
+    tui.addChild(app)
+    const plain = app.render(48).map(stripTerminalSequences).join('\n')
+    expect(plain).toContain('请求失败')
+    expect(plain).toContain('QUOTA')
+    expect(plain).toContain('Allocated quota exceeded.')
+    assertWidth(app.render(48), 48)
+    app.dispose()
+  })
+
   it('Slash 补全菜单会完整显示且可选择第五项', async () => {
     const terminal = new MemoryTerminal()
     terminal.columns = 64
