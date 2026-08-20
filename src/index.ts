@@ -22,6 +22,7 @@ import { createCordisEventSource } from './runtime/agent-session.js'
 import { executeHarnessCommand } from './runtime/command-execution.js'
 import { installHarnessInteractions, type HarnessInteractionInstallation } from './runtime/harness-interactions.js'
 import { InteractionQueue } from './runtime/interaction-queue.js'
+import { configuredMcpServerNames, McpStatusRuntime } from './runtime/mcp-status.js'
 import { createModelCatalog } from './runtime/model-catalog.js'
 import { createRecentSessionCatalog } from './runtime/recent-sessions.js'
 import { formatResumeHint, resolveLaunchProfile } from './runtime/resume-hint.js'
@@ -31,7 +32,7 @@ import { mountTui, type MountedTui } from './tui/mount.js'
 import { TuiStore } from './tui/store.js'
 
 export const name = 'omp-tui'
-export const inject = ['agentDefaultModel', 'agents', 'sessions']
+export const inject = ['agentDefaultModel', 'agentPresets', 'agents', 'sessions', 'tools']
 export { Config } from './config.js'
 
 function report(error: unknown): void {
@@ -56,6 +57,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   let interactionInstallation: HarnessInteractionInstallation | undefined
   let processSafety: ProcessSafety | undefined
   let removeCommandChangeListener: (() => void) | undefined
+  let removeLoaderEntryListener: (() => void) | undefined
   let removeSkillChangeListener: (() => void) | undefined
   let removeToolChangeListener: (() => void) | undefined
   let recentSessionsAbort: AbortController | undefined
@@ -79,6 +81,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   ctx.effect(() => () => {
     processSafety?.dispose()
     removeCommandChangeListener?.()
+    removeLoaderEntryListener?.()
     removeSkillChangeListener?.()
     removeToolChangeListener?.()
     recentSessionsAbort?.abort()
@@ -89,19 +92,40 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   })
 
   const run = async (): Promise<void> => {
-    await ctx.get('loader')?.await()
+    const loader = ctx.get('loader')
+    interactions = new InteractionQueue()
+    const store = new TuiStore()
+    const mcpStatus = new McpStatusRuntime(store)
+    const refreshConfiguredMcp = (): void => {
+      mcpStatus.setConfigured(configuredMcpServerNames(loader?.entries() ?? []))
+    }
+    const syncMcpTools = (): void => {
+      const agent = controller?.agent
+      const registry = ctx.get('tools')
+      if (agent === undefined || registry === undefined) return
+      mcpStatus.syncTools(registry.schemas(agent).map((tool) => tool.name))
+    }
+    const handleMcpLog = (args: readonly unknown[]): void => {
+      const text = args.map((value) => value instanceof Error ? value.message : String(value)).join(' ')
+      mcpStatus.handleLog(text)
+    }
+    refreshConfiguredMcp()
+    removeLoaderEntryListener = ctx.on('loader/entry-init', () => queueMicrotask(refreshConfiguredMcp))
+    ctx.logger.exporter({
+      colors: false,
+      export: (message) => handleMcpLog(message.args),
+    })
+    for (const message of ctx.logger.buffer) handleMcpLog(message.args)
+
     const presets = ctx.get('agentPresets')
     const tools = ctx.get('tools')
     const llm = ctx.get('llm')
     const commands = ctx.get('commands')
     const skills = ctx.get('skills')
-    const sessionQuery = ctx.get('sessionQuery')
     const tokenMeter = ctx.get('tokenMeter')
     const sandboxPolicy = ctx.get('sandboxPolicy')
     const compactionAvailable = ctx.get('compaction') !== undefined
     const cwd = process.cwd()
-    interactions = new InteractionQueue()
-    const store = new TuiStore()
     statusLine = new StatusLineRuntime(store, {
       cwd,
       compactionAvailable,
@@ -137,23 +161,12 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       sessionProjections: ctx.get('sessionProjections') !== undefined,
       agentPresets: presets !== undefined,
     })
-    const missing = [
-      ...(interactionInstallation.approvalAvailable ? [] : ['授权确认']),
-      ...(interactionInstallation.userQuestionsAvailable ? [] : ['用户问题']),
-    ]
-    if (missing.length > 0) controller.store.setNotice(`可选服务未挂载：${missing.join('、')}。相关请求将被拒绝处理。`)
-
-    await controller.start({
-      ...(config.resume === undefined ? {} : { resume: config.resume }),
-      ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
-    })
-    const recentSessionCatalog = sessionQuery === undefined
-      ? undefined
-      : createRecentSessionCatalog(sessionQuery)
     refreshRecentSessions = async (): Promise<void> => {
       recentSessionsAbort?.abort()
-      if (recentSessionCatalog === undefined || controller === undefined) {
-        controller?.store.setRecentSessions({ status: 'unavailable', items: [] })
+      if (controller === undefined) return
+      const sessionQuery = ctx.get('sessionQuery')
+      if (sessionQuery === undefined) {
+        controller.store.setRecentSessions({ status: 'unavailable', items: [] })
         return
       }
       const request = new AbortController()
@@ -161,7 +174,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       controller.store.setRecentSessions({ status: 'loading', items: [] })
       const sessionId = controller.store.getSnapshot().sessionId
       try {
-        const items = await recentSessionCatalog.list({
+        const items = await createRecentSessionCatalog(sessionQuery).list({
           cwd: process.cwd(),
           limit: 4,
           signal: request.signal,
@@ -176,7 +189,22 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         if (recentSessionsAbort === request) recentSessionsAbort = undefined
       }
     }
-    void refreshRecentSessions()
+    controller.store.setRecentSessions({ status: 'loading', items: [] })
+    ctx.inject(['sessionQuery'], () => {
+      void refreshRecentSessions?.()
+    })
+    const missing = [
+      ...(interactionInstallation.approvalAvailable ? [] : ['授权确认']),
+      ...(interactionInstallation.userQuestionsAvailable ? [] : ['用户问题']),
+    ]
+    if (missing.length > 0) controller.store.setNotice(`可选服务未挂载：${missing.join('、')}。相关请求将被拒绝处理。`)
+
+    await controller.start({
+      ...(config.resume === undefined ? {} : { resume: config.resume }),
+      ...(config.agentPreset === undefined ? {} : { agentPreset: config.agentPreset }),
+    })
+    syncMcpTools()
+    if (ctx.get('sessionQuery') !== undefined) void refreshRecentSessions()
     const commandRegistry = commands === undefined ? undefined : {
       list: () => {
         const agent = controller?.agent
@@ -242,6 +270,10 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
           await controller?.newSession()
           await refreshRecentSessions?.()
         },
+        resumeSession: async (sessionId) => {
+          await controller?.resumeSession(sessionId)
+          await refreshRecentSessions?.()
+        },
         shutdown: async () => {
           await controller?.shutdown()
         },
@@ -261,8 +293,17 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       removeSkillChangeListener = ctx.on('skills/change', () => mounted?.refreshSlashCommands())
     }
     if (tools !== undefined) {
-      removeToolChangeListener = ctx.on('tools/change', () => mounted?.refreshSlashCommands())
+      removeToolChangeListener = ctx.on('tools/change', () => {
+        syncMcpTools()
+        mounted?.refreshSlashCommands()
+      })
     }
+    void loader?.await().then(() => {
+      refreshConfiguredMcp()
+      syncMcpTools()
+      mcpStatus.markLoaderSettled()
+      void refreshRecentSessions?.()
+    }, () => undefined)
     processSafety = new ProcessSafety({
       shutdown: async (code) => {
         await controller?.shutdown(code)

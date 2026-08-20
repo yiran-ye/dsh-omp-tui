@@ -70,6 +70,14 @@ export interface HarnessStateSnapshot {
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 export type CollaborationMode = 'normal' | 'plan'
+export type McpServerPhase = 'connecting' | 'syncing' | 'ready' | 'retrying' | 'failed'
+
+export interface McpServerConnection {
+  readonly name: string
+  readonly phase: McpServerPhase
+  readonly toolCount: number
+  readonly detail?: string
+}
 
 export interface CatalogOverlayItem {
   readonly value: string
@@ -152,6 +160,7 @@ export interface TuiSnapshot {
   readonly reasoningEffort: ModelSelection['reasoningEffort']
   readonly lifecycle: TuiLifecycle
   readonly capabilities: CapabilityState
+  readonly mcpServers: readonly McpServerConnection[]
   readonly recentSessions: RecentSessionsState
   readonly statusLine: StatusLineState
 }
@@ -185,6 +194,7 @@ export function createInitialSnapshot(): TuiSnapshot {
     reasoningEffort: undefined,
     lifecycle: 'active',
     capabilities: DEFAULT_CAPABILITIES,
+    mcpServers: [],
     recentSessions: { status: 'unavailable', items: [] },
     statusLine: { compactionAvailable: false },
   }

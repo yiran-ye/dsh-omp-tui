@@ -4,6 +4,7 @@ import {
   createInitialSnapshot,
   type CapabilityState,
   type HarnessStateSnapshot,
+  type McpServerConnection,
   type OverlayState,
   type RecentSessionsState,
   type SessionEventLike,
@@ -43,6 +44,7 @@ export class TuiStore {
       ...initial,
       capabilities: this.snapshot.capabilities,
       harness: { ...harness },
+      mcpServers: this.snapshot.mcpServers,
       notice: this.snapshot.notice,
       recentSessions: this.snapshot.recentSessions,
       reasoningVisible: this.snapshot.reasoningVisible,
@@ -96,6 +98,10 @@ export class TuiStore {
 
   setCapabilities(capabilities: Partial<CapabilityState>): void {
     this.patch({ capabilities: { ...this.snapshot.capabilities, ...capabilities } })
+  }
+
+  setMcpServers(mcpServers: readonly McpServerConnection[]): void {
+    this.patch({ mcpServers })
   }
 
   setNotice(notice: string | undefined): void {

@@ -60,7 +60,7 @@ Session ID 是品牌字符串，交互式会话约定为 `session-${randomUUID()
   读取日志折叠后的标题。
 - 单条标题读取失败会回退为短 Session ID；目录级错误或服务未挂载会成为欢迎页的非致命
   降级状态。
-- `/new` 与 `/clear` 在新 Agent 建立后重新查询；并发刷新通过 `AbortController` 淘汰旧请求。
+- `/new`、`/clear` 与 `/resume` 在 Agent 切换后重新查询；并发刷新通过 `AbortController` 淘汰旧请求。
 
 rc.7 的核心持久事件为：
 
@@ -104,6 +104,8 @@ Sandbox Mode 的运行时切换使用 `@deepseek-ai/dsh-sandbox-policy` 导出�
 - `@deepseek-ai/dsh-mcp-client@0.1.0-rc.7` 是可选插件，并不提供独立 `ctx.mcp` 服务。每个
   Server 的发现结果以 `mcp__<serverName>__<rawName>` 注册到 `ctx.tools`；因此 TUI 使用
   `ctx.tools.schemas(agent)` 和名称前缀识别 MCP 工具，并监听 `tools/change`。
+- TUI 不等待整个 Loader 完成才挂载。MCP Client 的首次连接与 `tools/list` 在后台继续，
+  欢迎页显示 `Connecting`、`Reconnecting`、`Failed` 或已发现的工具数量。
 
 ## pi-tui
 

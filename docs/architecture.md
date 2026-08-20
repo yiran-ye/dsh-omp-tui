@@ -88,11 +88,12 @@ prompt assembly 时快照完整选择，因此不会拆分正在进行中的模�
 6. shutdown 依次取消运行、等待 idle、flush、解除监听、停止 TUI、dispose
    Agent，最后通过 `appExit` 请求退出。
 
-`/clear` 使用相同清理顺序后 `agents.create()` 一个新 ID，Store 与 Editor 对象
-保持存在，因此输入历史不丢失。
+`/clear` 使用相同清理顺序后 `agents.create()` 一个新 ID；`/resume` 则调用
+`agents.resume()` 恢复选择器或参数指定的 Session。两者都会保留 Store 与 Editor
+对象，因此输入历史不丢失。
 
-`start`、`/clear` 与 shutdown 共用一个生命周期串行门。shutdown 会先同步标记
-closing，使正在清理的 `/clear` 不再 attach 新 Agent；Handle 与 Binding 按同一
+`start`、`/clear`、`/resume` 与 shutdown 共用一个生命周期串行门。shutdown 会先同步标记
+closing，使正在清理的 Session 切换不再 attach 新 Agent；Handle 与 Binding 按同一
 次 ownership 取走并释放，避免并发切换覆盖未受管理的 Agent。
 
 ## Tool Presentation

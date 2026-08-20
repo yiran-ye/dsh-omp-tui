@@ -59,6 +59,7 @@ export const SLASH_COMMAND_AUTOCOMPLETE_ITEMS = [
       return SANDBOX_MODE_AUTOCOMPLETE_ITEMS.filter((item) => item.value.startsWith(normalized))
     },
   },
+  { name: 'resume', description: '恢复最近会话', argumentHint: '[session-id]' },
   { name: 'clear', description: '创建新会话（保留输入历史）' },
   { name: 'new', description: '创建新会话（/clear 的别名）' },
   { name: 'retry', description: '重新发送上一条用户任务' },

@@ -67,11 +67,19 @@ function sandboxModeArgument(text: string): SandboxMode | null | undefined {
   return isSandboxMode(mode) ? mode : null
 }
 
+function resumeSessionArgument(text: string): string | null | undefined {
+  const [, ...args] = text.trim().split(/\s+/)
+  if (args.length === 0) return undefined
+  if (args.length !== 1) return null
+  return args[0]
+}
+
 export interface TuiActions {
   send(text: string): void
   cancel(): void
   selectModel(selection: ModelSelection): Promise<void>
   selectSandboxMode?(mode: SandboxMode): Promise<void>
+  resumeSession?(sessionId: string): Promise<void>
   newSession(): Promise<void>
   shutdown(): Promise<void>
 }
@@ -245,6 +253,23 @@ export function mountTui(options: MountOptions): MountedTui {
       return
     }
     if (tools.length === 0) {
+      const servers = options.store.getSnapshot().mcpServers
+      const pending = servers.filter((server) => server.phase === 'connecting'
+        || server.phase === 'syncing'
+        || server.phase === 'retrying')
+      if (pending.length > 0) {
+        options.store.setNotice(`MCP 正在后台连接：${pending.map((server) => server.name).join('、')}。`)
+        return
+      }
+      const failed = servers.filter((server) => server.phase === 'failed')
+      if (failed.length > 0) {
+        options.store.setNotice(`MCP 连接失败：${failed.map((server) => server.name).join('、')}。`)
+        return
+      }
+      if (servers.length > 0) {
+        options.store.setNotice(`MCP 已连接，但没有发现工具：${servers.map((server) => server.name).join('、')}。`)
+        return
+      }
       options.store.setNotice('未检测到 MCP 工具。请确认 @deepseek-ai/dsh-mcp-client 已连接并发现工具。')
       return
     }
@@ -306,6 +331,50 @@ export function mountTui(options: MountOptions): MountedTui {
         applySandboxMode(value)
       },
       selected,
+    )
+  }
+  const resumeSession = (sessionId: string): void => {
+    if (options.actions.resumeSession === undefined) {
+      options.store.setNotice('当前环境不支持恢复会话。')
+      return
+    }
+    options.store.setNotice(`正在恢复会话 ${sessionId}…`)
+    runAction(options.actions.resumeSession(sessionId), '/resume', () => {
+      options.store.setNotice(`已恢复会话 ${sessionId}。`)
+      refreshSlashCommands()
+    })
+  }
+  const openRecentSessions = (): void => {
+    if (options.actions.resumeSession === undefined) {
+      options.store.setNotice('当前环境不支持恢复会话。')
+      return
+    }
+    const recent = options.store.getSnapshot().recentSessions
+    if (recent.status === 'loading') {
+      options.store.setNotice('最近会话仍在读取，请稍后重试。')
+      return
+    }
+    if (recent.status === 'unavailable') {
+      options.store.setNotice('当前环境不支持会话历史；可使用 /resume <session-id> 直接恢复。')
+      return
+    }
+    if (recent.status === 'error') {
+      options.store.setNotice('暂时无法读取会话历史；可使用 /resume <session-id> 直接恢复。')
+      return
+    }
+    if (recent.items.length === 0) {
+      options.store.setNotice('当前工作区没有可恢复的其他会话。')
+      return
+    }
+    openCatalog(
+      '恢复会话',
+      '选择要恢复的会话；当前会话会先保存并释放。',
+      recent.items.map((item) => ({
+        value: item.id,
+        label: item.label,
+        description: `${item.timeAgo} · ${item.id}`,
+      })),
+      resumeSession,
     )
   }
   const reasoningChoices = (reasoning: ModelReasoning): readonly {
@@ -581,6 +650,11 @@ export function mountTui(options: MountOptions): MountedTui {
       else if (mode === null) {
         options.store.setNotice('用法：/sandbox [read-only|workspace-write|danger-full-access]')
       } else applySandboxMode(mode)
+    } else if (command === 'resume') {
+      const sessionId = resumeSessionArgument(text)
+      if (sessionId === undefined) openRecentSessions()
+      else if (sessionId === null) options.store.setNotice('用法：/resume [session-id]')
+      else resumeSession(sessionId)
     } else if (command === 'clear' || command === 'new') {
       runAction(options.actions.newSession(), command === 'clear' ? '/clear' : '/new', refreshSlashCommands)
     } else if (command === 'retry') {

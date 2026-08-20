@@ -124,6 +124,7 @@ dsh --profile omp-tui --agent-preset code
 | `/mcp` | 浏览当前已连接 MCP Server 发现的工具；选择后预填工具名 |
 | `/model` | 从已注册 Provider 的目录中依次选择模型及其思考等级 |
 | `/sandbox [mode]` | 显示或切换当前 Session 的 `read-only`、`workspace-write`、`danger-full-access` |
+| `/resume [session-id]` | 打开最近会话选择器，或按 Session ID 直接恢复会话 |
 | `/clear` / `/new` | flush/dispose 当前 Agent，创建新 Session，并保留输入历史 |
 | `/retry` | 重新发送上一条用户任务 |
 | `/exit` / `/quit` | flush Session 后优雅退出 |
@@ -174,7 +175,7 @@ DSH 不会自动扫描项目内的 MCP 配置。本仓库将 `.dsh/` 作为本�
           process.env.CONTEXT7_API_KEY
             ? { Authorization: `Bearer ${process.env.CONTEXT7_API_KEY}` }
             : {}
-        failOnStartupError: true
+        failOnStartupError: false
 ```
 
 ```sh
@@ -187,6 +188,8 @@ dsh --profile omp-tui --patch .dsh/context7.patch.yml
 
 Context7 可匿名发现工具；如需使用 API Key，在项目根目录新建未提交的 `.env`，并设置
 `CONTEXT7_API_KEY=...`。DSH 会在启动时读取当前项目的 `.env`；可复制 `.env.example` 作为起点。
+TUI 不等待 MCP 的首次连接与工具发现：界面和 Agent 会先就绪，MCP 在后台连接，当前状态会
+显示在欢迎页的 `MCP` 区域；连接完成后 `/mcp` 会立即读取新注册的工具。
 
 ## 配置覆盖
 

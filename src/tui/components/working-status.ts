@@ -115,7 +115,7 @@ export function resolveWorkingActivity(snapshot: TuiSnapshot, tools: ToolPresent
     const tail = assistant.streaming ? assistant.blocks.at(-1) : undefined
     if (tail?.kind === 'reasoning' || (assistant.reasoning.length > 0 && assistant.text.length === 0)) {
       const phrase = latestGeneratedPhrase(tail?.text ?? assistant.reasoning)
-      return phrase === undefined ? '正在思考' : `正在思考：${phrase}`
+      return phrase === undefined ? 'Thinking' : `Thinking: ${phrase}`
     }
     const phrase = latestGeneratedPhrase(tail?.text ?? assistant.text)
     return phrase ?? '正在生成回复'

@@ -58,6 +58,17 @@ describe('TuiStore 与 AgentSessionBinding', () => {
     })
   })
 
+  it('新会话重置时保留 MCP 后台连接状态', () => {
+    const store = new TuiStore()
+    store.setMcpServers([{ name: 'context7', phase: 'connecting', toolCount: 0 }])
+
+    store.reset()
+
+    expect(store.getSnapshot().mcpServers).toEqual([
+      { name: 'context7', phase: 'connecting', toolCount: 0 },
+    ])
+  })
+
   it('新会话重置时保留 StatusLine 运行时状态', () => {
     const store = new TuiStore()
     store.setStatusLine({

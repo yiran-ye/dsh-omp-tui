@@ -157,6 +157,16 @@ export class AgentController {
     })
   }
 
+  resumeSession(sessionId: string): Promise<ControlledAgent> {
+    if (this.closing) return Promise.reject(new Error('Agent Controller 正在关闭。'))
+    return this.serializeLifecycle(async () => {
+      this.assertOpen()
+      await this.releaseCurrent(false)
+      this.assertOpen()
+      return this.attach(sessionId)
+    })
+  }
+
   shutdown(code = 0): Promise<void> {
     if (this.shutdownPromise !== undefined) return this.shutdownPromise
     this.closing = true

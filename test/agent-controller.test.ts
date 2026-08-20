@@ -229,6 +229,20 @@ describe('AgentController', () => {
     expect(disposed).toHaveBeenCalledTimes(1)
   })
 
+  it('/resume 生命周期会保存旧 Session 并恢复指定 Session', async () => {
+    const { controller, created, resumed, disposed, flush } = harness()
+    const first = await controller.start()
+    const second = await controller.resumeSession('abc')
+
+    expect(created).toHaveLength(1)
+    expect(resumed).toHaveLength(1)
+    expect(resumed[0]?.resumeSessionId).toBe('session-abc')
+    expect(second).not.toBe(first)
+    expect(flush).toHaveBeenCalledWith(first.session)
+    expect(disposed).toHaveBeenCalledWith(first.id)
+    expect(controller.agent).toBe(second)
+  })
+
   it('连续 /clear 串行执行，所有被替换 Agent 都会被释放', async () => {
     const { controller, created, disposed } = harness()
     const first = await controller.start()

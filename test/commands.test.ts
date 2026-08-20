@@ -36,6 +36,7 @@ describe('输入策略与 Slash Commands', () => {
     expect(parseSlashCommand('/mcp')).toBe('mcp')
     expect(parseSlashCommand('/model')).toBe('model')
     expect(parseSlashCommand('/sandbox danger-full-access')).toBe('sandbox')
+    expect(parseSlashCommand('/resume session-abc')).toBe('resume')
     expect(parseSlashCommand('/clear')).toBe('clear')
     expect(parseSlashCommand('/new')).toBe('new')
     expect(parseSlashCommand('/retry')).toBe('retry')
@@ -53,7 +54,7 @@ describe('输入策略与 Slash Commands', () => {
 
     expect(suggestions?.prefix).toBe('/')
     expect(suggestions?.items.map((item) => item.value)).toEqual([
-      'help', 'tools', 'skills', 'mcp', 'model', 'sandbox', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
+      'help', 'tools', 'skills', 'mcp', 'model', 'sandbox', 'resume', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
     ])
 
     const sandboxModes = await provider.getSuggestions(['/sandbox danger'], 0, 15, {
@@ -73,12 +74,13 @@ describe('输入策略与 Slash Commands', () => {
     ])
 
     expect(commands.map((command) => command.name)).toEqual([
-      'goal', 'help', 'compact', 'tools', 'skills', 'mcp', 'model', 'sandbox', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
+      'goal', 'help', 'compact', 'tools', 'skills', 'mcp', 'model', 'sandbox', 'resume', 'clear', 'new', 'retry', 'hotkeys', 'exit', 'quit',
       'release-notes',
     ])
     expect(commands.find((command) => command.name === 'goal')).toMatchObject({ argumentHint: '<objective>' })
     expect(commands.find((command) => command.name === 'help')).toMatchObject({ description: '显示命令和快捷键' })
     expect(commands.find((command) => command.name === 'sandbox')).toMatchObject({ argumentHint: '[mode]' })
+    expect(commands.find((command) => command.name === 'resume')).toMatchObject({ argumentHint: '[session-id]' })
     expect(formatHelpText(commands)).toContain('/compact  压缩上下文')
     expect(formatHelpText(commands)).toContain('/release-notes  生成发布说明')
     expect(formatHelpText(commands)).toContain('Ctrl+T 切换思考过程')

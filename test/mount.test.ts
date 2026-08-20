@@ -399,6 +399,28 @@ describe('Slash Command 分派', () => {
     mounted.stop()
   })
 
+  it('MCP 后台连接时通过 /mcp 显示连接状态', () => {
+    const store = new TuiStore()
+    store.setMcpServers([{ name: 'context7', phase: 'connecting', toolCount: 0 }])
+    const mounted = mountTui({
+      store,
+      terminal: new MemoryTerminal(),
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+      mcp: { list: () => [] },
+    })
+
+    mounted.app.prompt.input.onSubmit?.('/mcp')
+    expect(store.getSnapshot().notice).toBe('MCP 正在后台连接：context7。')
+    mounted.stop()
+  })
+
   it('通过 /sandbox 选择或直接切换当前 Session 的 Sandbox Mode', async () => {
     const store = new TuiStore()
     store.setSession('session-sandbox', 'openai', 'gpt-5.6-luna')
@@ -447,6 +469,57 @@ describe('Slash Command 分派', () => {
 
     mounted.app.prompt.input.onSubmit?.('/sandbox unrestricted')
     expect(store.getSnapshot().notice).toBe('用法：/sandbox [read-only|workspace-write|danger-full-access]')
+    mounted.stop()
+  })
+
+  it('通过 /resume 选择最近会话或按 Session ID 直接恢复', async () => {
+    const store = new TuiStore()
+    store.setRecentSessions({
+      status: 'ready',
+      items: [{
+        id: 'session-recent',
+        label: '最近的会话',
+        timeAgo: '2 分钟前',
+        timestamp: 1,
+      }],
+    })
+    const terminal = new MemoryTerminal()
+    const resumeSession = vi.fn(async (_sessionId: string) => undefined)
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        resumeSession,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    mounted.app.prompt.input.onSubmit?.('/resume')
+    const overlay = store.getSnapshot().overlay
+    expect(overlay).toMatchObject({ kind: 'catalog', title: '恢复会话' })
+    if (overlay.kind !== 'catalog') throw new Error('expected resume catalog')
+    expect(overlay.items[0]).toMatchObject({
+      value: 'session-recent',
+      label: '最近的会话',
+      description: '2 分钟前 · session-recent',
+    })
+
+    terminal.input('\r')
+    await settle()
+    expect(resumeSession).toHaveBeenLastCalledWith('session-recent')
+    expect(store.getSnapshot().notice).toBe('已恢复会话 session-recent。')
+
+    mounted.app.prompt.input.onSubmit?.('/resume session-direct')
+    await settle()
+    expect(resumeSession).toHaveBeenLastCalledWith('session-direct')
+
+    mounted.app.prompt.input.onSubmit?.('/resume one two')
+    expect(store.getSnapshot().notice).toBe('用法：/resume [session-id]')
     mounted.stop()
   })
 

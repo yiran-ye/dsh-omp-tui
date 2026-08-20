@@ -15,6 +15,7 @@ import { UserBlock } from '../src/tui/components/user-block.js'
 import { Welcome } from '../src/tui/components/welcome.js'
 import { formatWorkingElapsed, resolveWorkingActivity } from '../src/tui/components/working-status.js'
 import { HelpDialog } from '../src/tui/components/help-dialog.js'
+import { SLASH_COMMAND_AUTOCOMPLETE_ITEMS } from '../src/tui/commands.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { ToolTranscriptEntry } from '../src/tui/state.js'
 
@@ -77,6 +78,7 @@ describe('OMP 风格渲染', () => {
       status: 'ready',
       items: [{ id: 'session-old', label: '修复欢迎页布局', timeAgo: '3 分钟前', timestamp: 1 }],
     })
+    store.setMcpServers([{ name: 'context7', phase: 'connecting', toolCount: 0 }])
     const lines = new Welcome(store.getSnapshot()).render(80)
     const plain = lines.map(stripTerminalSequences).join('\n')
     assertWidth(lines, 80)
@@ -87,6 +89,9 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('快捷提示')
     expect(plain).toContain('最近会话')
     expect(plain).toContain('修复欢迎页布局')
+    expect(plain).toContain('MCP')
+    expect(plain).toContain('context7')
+    expect(plain).toContain('Connecting')
     expect(plain).toContain('输入 /help')
     expect(plain).not.toContain('LSP Servers')
     expect(plain).not.toContain('LSP')
@@ -271,7 +276,7 @@ describe('OMP 风格渲染', () => {
         },
       ])
       thinkingStore.setStatus('running')
-      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe('正在思考：分析中')
+      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe('Thinking: 分析中')
       thinkingStore.appendEvent({
         type: 'assistant/chunk',
         seq: 1,
@@ -279,7 +284,7 @@ describe('OMP 风格渲染', () => {
         data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: '，正在添加计时器' } },
       })
       expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
-        '正在思考：分析中，正在添加计时器',
+        'Thinking: 分析中，正在添加计时器',
       )
 
       const replyingStore = new TuiStore([
@@ -313,7 +318,7 @@ describe('OMP 风格渲染', () => {
       ])
       betweenStepsStore.setStatus('running')
       expect(resolveWorkingActivity(betweenStepsStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
-        '正在思考：已完成第一步，接下来检查测试',
+        'Thinking: 已完成第一步，接下来检查测试',
       )
 
       const intentStore = new TuiStore([
@@ -468,7 +473,9 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('model')
     expect(plain).toContain('sandbox')
 
-    for (let index = 0; index < 11; index++) app.prompt.input.handleInput('\u001b[B')
+    for (let index = 1; index < SLASH_COMMAND_AUTOCOMPLETE_ITEMS.length; index++) {
+      app.prompt.input.handleInput('\u001b[B')
+    }
     const selectedPlain = app.render(64).map(stripTerminalSequences).join('\n')
     expect(selectedPlain).toContain('quit')
     app.prompt.input.handleInput('\r')

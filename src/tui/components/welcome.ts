@@ -1,6 +1,6 @@
 import { visibleWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui'
 import { APP_NAME, APP_VERSION } from '../../app-meta.js'
-import type { RecentSessionSummary, TuiSnapshot } from '../state.js'
+import type { McpServerConnection, RecentSessionSummary, TuiSnapshot } from '../state.js'
 import { theme } from '../theme.js'
 import { fitLine, padLine } from './common.js'
 
@@ -54,6 +54,19 @@ function recentLines(snapshot: TuiSnapshot, width: number): string[] {
   return state.items.slice(0, 4).map((item) => recentLine(item, width))
 }
 
+function mcpServerLine(server: McpServerConnection, width: number): string {
+  const [icon, status] = (() => {
+    switch (server.phase) {
+      case 'connecting': return [theme.warning('◌'), theme.warning('Connecting')]
+      case 'syncing': return [theme.warning('◌'), theme.warning('Syncing')]
+      case 'ready': return [theme.success('●'), theme.success(`${server.toolCount} tools`)]
+      case 'retrying': return [theme.warning('↻'), theme.warning('Reconnecting')]
+      case 'failed': return [theme.error('×'), theme.error('Failed')]
+    }
+  })()
+  return fitLine(`${icon} ${server.name} ${theme.dim('·')} ${status}`, width)
+}
+
 function renderTip(width: number): string[] {
   if (width < 16) return []
   return wrapTextWithAnsi(
@@ -87,9 +100,17 @@ export class Welcome {
       '',
     ]
     const rightContentWidth = Math.max(1, (showDualColumn ? rightWidth : innerWidth) - 2)
+    const mcpLines = this.snapshot.mcpServers.length === 0
+      ? []
+      : [
+          ` ${theme.borderMuted('─'.repeat(rightContentWidth))}`,
+          ` ${theme.bold(theme.accent('MCP'))}`,
+          ...this.snapshot.mcpServers.slice(0, 4).map((server) => ` ${mcpServerLine(server, rightContentWidth)}`),
+        ]
     const rightLines = [
       ` ${theme.bold(theme.accent('快捷提示'))}`,
       ...TIPS.map(([key, description]) => ` ${theme.accent(key)}${theme.muted(description)}`),
+      ...mcpLines,
       ` ${theme.borderMuted('─'.repeat(rightContentWidth))}`,
       ` ${theme.bold(theme.accent('最近会话'))}`,
       ...recentLines(this.snapshot, rightContentWidth).map((line) => ` ${line}`),
