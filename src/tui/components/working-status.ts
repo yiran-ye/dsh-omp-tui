@@ -1,5 +1,4 @@
 import {
-  Loader,
   stripTerminalSequences,
   truncateToWidth,
   visibleWidth,
@@ -13,6 +12,8 @@ import { fitLines } from './common.js'
 const MAX_ACTIVITY_WIDTH = 64
 const SPINNER_WIDTH = 2
 const INTERRUPT_HINT = '⟨esc⟩'
+const STATUS_FRAME_INTERVAL_MS = 250
+const STATUS_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 
 function stripControlCharacters(value: string): string {
   return Array.from(value, (character) => {
@@ -106,11 +107,18 @@ export function resolveWorkingActivity(snapshot: TuiSnapshot, tools: ToolPresent
     return title.length > 0 ? title : entry.name
   }
 
-  const assistant = [...snapshot.transcript].reverse().find(
-    (entry): entry is AssistantTranscriptEntry => entry.kind === 'assistant'
+  let assistant: AssistantTranscriptEntry | undefined
+  for (let index = snapshot.transcript.length - 1; index >= 0; index--) {
+    const entry = snapshot.transcript[index]
+    if (
+      entry?.kind === 'assistant'
       && (entry.streaming || (snapshot.currentTurn !== undefined && entry.turn === snapshot.currentTurn))
-      && (entry.reasoning.length > 0 || entry.text.length > 0),
-  )
+      && (entry.reasoning.length > 0 || entry.text.length > 0)
+    ) {
+      assistant = entry
+      break
+    }
+  }
   if (assistant !== undefined) {
     const tail = assistant.streaming ? assistant.blocks.at(-1) : undefined
     if (tail?.kind === 'reasoning' || (assistant.reasoning.length > 0 && assistant.text.length === 0)) {
@@ -124,25 +132,29 @@ export function resolveWorkingActivity(snapshot: TuiSnapshot, tools: ToolPresent
   return '正在等待模型响应'
 }
 
+export function hasVisibleAssistantStream(snapshot: TuiSnapshot): boolean {
+  for (let index = snapshot.transcript.length - 1; index >= 0; index--) {
+    const entry = snapshot.transcript[index]
+    if (entry?.kind !== 'assistant' || !entry.streaming) continue
+    return entry.text.length > 0 || (snapshot.reasoningVisible && entry.reasoning.length > 0)
+  }
+  return false
+}
+
 export class WorkingStatus {
-  private readonly loader: Loader
   private active = false
   private activity = ''
-  private message = ''
   private startedAt = 0
+  private timer: ReturnType<typeof setTimeout> | undefined
 
-  constructor(tui: TUI, private readonly now: () => number = Date.now) {
-    this.loader = new Loader(tui, theme.warning, (text) => text, '')
-    this.loader.stop()
-  }
+  constructor(private readonly tui: TUI, private readonly now: () => number = Date.now) {}
 
   setActivity(activity: string | undefined): void {
     if (activity === undefined) {
       this.active = false
       this.activity = ''
-      this.message = ''
       this.startedAt = 0
-      this.loader.stop()
+      this.stopTimer()
       return
     }
 
@@ -150,28 +162,16 @@ export class WorkingStatus {
     if (!this.active) {
       this.active = true
       this.startedAt = this.now()
-      this.updateMessage(80)
-      this.loader.start()
+      this.scheduleFrame()
     }
   }
 
   render(width: number): string[] {
     if (!this.active) return []
     const safeWidth = Math.max(1, width)
-    this.updateMessage(safeWidth)
-    return fitLines(this.loader.render(safeWidth).slice(1), safeWidth)
-  }
-
-  dispose(): void {
-    this.active = false
-    this.activity = ''
-    this.startedAt = 0
-    this.loader.stop()
-  }
-
-  private updateMessage(width: number): void {
-    const elapsed = formatWorkingElapsed(this.now() - this.startedAt)
-    const messageWidth = Math.max(1, width - SPINNER_WIDTH)
+    const elapsedMs = this.now() - this.startedAt
+    const elapsed = formatWorkingElapsed(elapsedMs)
+    const messageWidth = Math.max(1, safeWidth - SPINNER_WIDTH)
     const suffix = [
       ` · ${elapsed} ${INTERRUPT_HINT}`,
       ` ${elapsed} ${INTERRUPT_HINT}`,
@@ -180,9 +180,33 @@ export class WorkingStatus {
     ].find((candidate) => visibleWidth(candidate) <= messageWidth) ?? ''
     const activityWidth = Math.max(0, messageWidth - visibleWidth(suffix))
     const activity = activityWidth === 0 ? '' : truncateToWidth(this.activity, activityWidth, '…')
+    const frameIndex = Math.floor(Math.max(0, elapsedMs) / STATUS_FRAME_INTERVAL_MS) % STATUS_FRAMES.length
+    const frame = STATUS_FRAMES[frameIndex] ?? STATUS_FRAMES[0]
     const message = `${activity.length === 0 ? '' : theme.text(activity)}${theme.muted(suffix)}`
-    if (message === this.message) return
-    this.message = message
-    this.loader.setMessage(message)
+    return fitLines([`${theme.warning(frame)} ${message}`], safeWidth)
+  }
+
+  dispose(): void {
+    this.active = false
+    this.activity = ''
+    this.startedAt = 0
+    this.stopTimer()
+  }
+
+  private scheduleFrame(): void {
+    if (!this.active || this.timer !== undefined) return
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      if (!this.active) return
+      this.tui.requestRender()
+      this.scheduleFrame()
+    }, STATUS_FRAME_INTERVAL_MS)
+    this.timer.unref()
+  }
+
+  private stopTimer(): void {
+    if (this.timer === undefined) return
+    clearTimeout(this.timer)
+    this.timer = undefined
   }
 }

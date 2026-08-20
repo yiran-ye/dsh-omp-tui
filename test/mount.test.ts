@@ -1,4 +1,4 @@
-import { stripTerminalSequences, type Terminal } from '@earendil-works/pi-tui'
+import { ScrollView, stripTerminalSequences, type Terminal } from '@earendil-works/pi-tui'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
@@ -120,12 +120,16 @@ describe('备用屏挂载', () => {
 
     mounted.tui.renderNow(true)
     expect(mounted.tui.isFollowingOutput).toBe(true)
-    expect(stripTerminalSequences(terminal.output)).toContain('▐')
     const bottom = mounted.tui.viewportTop
     terminal.input('\u001b[<64;1;1M')
     mounted.tui.renderNow()
 
     expect(mounted.tui.viewportTop).toBe(bottom - 3)
+    expect(stripTerminalSequences(terminal.output)).toContain('▐')
+    mounted.tui.scrollToTop()
+    terminal.output = ''
+    mounted.tui.renderNow(true)
+    expect(stripTerminalSequences(terminal.output)).toContain('输入任务，/ 查看命令…')
     store.appendEvent({
       type: 'user/message',
       seq: 1,
@@ -138,6 +142,65 @@ describe('备用屏挂载', () => {
     mounted.tui.renderNow()
 
     expect(mounted.app.render(64).map(stripTerminalSequences).join('\n')).toContain('滚动期间的新输出')
+    mounted.stop()
+  })
+
+  it('滚动条不占用内容列，保持滚动快速路径', () => {
+    const terminal = new MemoryTerminal()
+    const mounted = mountTui({
+      store: new TuiStore(),
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    const viewport = mounted.app.children[0]
+    expect(viewport).toBeInstanceOf(ScrollView)
+    if (!(viewport instanceof ScrollView)) throw new Error('缺少会话滚动容器')
+    expect(viewport.scrollbar).toBe('auto')
+    expect(viewport.getContentWidth(terminal.columns)).toBe(terminal.columns)
+    mounted.stop()
+  })
+
+  it('输入重绘不会调用整份会话文档的扁平渲染', () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore([
+      {
+        type: 'user/message',
+        seq: 0,
+        time: 0,
+        data: {
+          content: [{ type: 'text', text: Array.from({ length: 200 }, (_, index) => `历史 ${index}`).join('\n') }],
+          source: { kind: 'user' },
+        },
+      },
+    ])
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+    mounted.tui.renderNow(true)
+    const renderDocument = vi.spyOn(mounted.app, 'render')
+
+    terminal.input('x')
+    mounted.tui.renderNow()
+
+    expect(renderDocument).not.toHaveBeenCalled()
+    renderDocument.mockRestore()
     mounted.stop()
   })
 

@@ -29,9 +29,7 @@ import { CatalogDialog } from './components/catalog-dialog.js'
 import { HelpDialog } from './components/help-dialog.js'
 import { QuestionDialog } from './components/question-dialog.js'
 import { BoundToolDetailDialog } from './components/tool-detail-dialog.js'
-import { TranscriptScrollView } from './components/transcript-scroll-view.js'
 import type { CatalogOverlayItem, SandboxMode } from './state.js'
-import { theme } from './theme.js'
 
 const SANDBOX_MODE_OPTIONS = [
   {
@@ -670,12 +668,7 @@ export function mountTui(options: MountOptions): MountedTui {
 
   const app = new App(tui, options.store, presenter, submit)
   refreshSlashCommands()
-  tui.setLayoutRoot(new TranscriptScrollView(app, {
-    follow: 'end',
-    primary: true,
-    scrollbar: 'always',
-    scrollbarStyle: () => theme.accent('▐'),
-  }, (following) => app.setFollowingOutput(following)))
+  tui.setLayoutRoot(app)
   const restore = new TerminalRestore(() => tui.stop())
   let overlayHandle: OverlayHandle | undefined
   let overlayToken = ''

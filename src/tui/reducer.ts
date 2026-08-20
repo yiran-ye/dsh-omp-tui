@@ -1,5 +1,4 @@
 import type {
-  AssistantTranscriptEntry,
   ErrorTranscriptEntry,
   SessionEventLike,
   StreamBlock,
@@ -62,8 +61,14 @@ function stripSystemReminderBlocks(text: string): string {
   return stripped.replace(/\n[\t ]*\n(?:[\t ]*\n)+/g, '\n\n')
 }
 
-function upsertTranscript(snapshot: TuiSnapshot, entry: TranscriptEntry): TuiSnapshot {
-  const index = snapshot.transcript.findIndex((candidate) => candidate.key === entry.key)
+function transcriptEntryIndex(transcript: readonly TranscriptEntry[], key: string): number {
+  const lastIndex = transcript.length - 1
+  if (lastIndex >= 0 && transcript[lastIndex]?.key === key) return lastIndex
+  return transcript.findIndex((candidate) => candidate.key === key)
+}
+
+function upsertTranscript(snapshot: TuiSnapshot, entry: TranscriptEntry, knownIndex?: number): TuiSnapshot {
+  const index = knownIndex ?? transcriptEntryIndex(snapshot.transcript, entry.key)
   if (index === -1) return { ...snapshot, transcript: [...snapshot.transcript, entry] }
   const transcript = [...snapshot.transcript]
   transcript[index] = entry
@@ -141,9 +146,9 @@ function reduceAssistantChunk(snapshot: TuiSnapshot, event: SessionEventLike): T
   if (turn === undefined || step === undefined || blockIndex === undefined) return snapshot
 
   const key = assistantKey(turn, step)
-  const previous = snapshot.transcript.find(
-    (entry): entry is AssistantTranscriptEntry => entry.kind === 'assistant' && entry.key === key,
-  )
+  const previousIndex = transcriptEntryIndex(snapshot.transcript, key)
+  const candidate = previousIndex === -1 ? undefined : snapshot.transcript[previousIndex]
+  const previous = candidate?.kind === 'assistant' ? candidate : undefined
   let blocks = previous?.blocks ?? []
   if (chunkType === 'text-delta' || chunkType === 'reasoning-delta') {
     const value = stringField(chunk, 'text')
@@ -171,7 +176,7 @@ function reduceAssistantChunk(snapshot: TuiSnapshot, event: SessionEventLike): T
     reasoning: projected.reasoning,
     streaming: true,
     blocks,
-  })
+  }, previousIndex)
 }
 
 function reduceAssistantMessage(snapshot: TuiSnapshot, event: SessionEventLike): TuiSnapshot {

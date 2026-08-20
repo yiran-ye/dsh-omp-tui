@@ -1,5 +1,6 @@
 import {
   Key,
+  Markdown,
   stripTerminalSequences,
   TuiMainScreen,
   type Terminal,
@@ -8,6 +9,7 @@ import {
 import { describe, expect, it, vi } from 'vitest'
 import { ToolPresenter } from '../src/runtime/tool-presentation.js'
 import { App } from '../src/tui/components/app.js'
+import { AssistantBlock } from '../src/tui/components/assistant-block.js'
 import { StatusLine } from '../src/tui/components/status-line.js'
 import { ToolCard } from '../src/tui/components/tool-card.js'
 import { ToolDetailDialog } from '../src/tui/components/tool-detail-dialog.js'
@@ -55,6 +57,44 @@ describe('OMP 风格渲染', () => {
       injected: false,
     })
     for (const width of [8, 12, 20, 40]) assertWidth(user.render(width), width)
+  })
+
+  it('流式正文使用轻量渲染，最终消息再解析 Markdown', () => {
+    const renderMarkdown = vi.spyOn(Markdown.prototype, 'render')
+    try {
+      const base = {
+        kind: 'assistant' as const,
+        key: 'assistant:1:1',
+        seq: 1,
+        turn: 1,
+        step: 1,
+        reasoning: '',
+        blocks: [],
+      }
+      const streaming = new AssistantBlock({
+        ...base,
+        text: '正在输出 **加粗内容**',
+        streaming: true,
+      }, true).render(32)
+
+      expect(renderMarkdown).not.toHaveBeenCalled()
+      expect(streaming.map(stripTerminalSequences).join('\n')).toContain('**加粗内容**')
+      assertWidth(streaming, 32)
+
+      const complete = new AssistantBlock({
+        ...base,
+        text: '最终输出 **加粗内容**',
+        streaming: false,
+      }, true).render(32)
+      const plain = complete.map(stripTerminalSequences).join('\n')
+
+      expect(renderMarkdown).toHaveBeenCalledOnce()
+      expect(plain).toContain('加粗内容')
+      expect(plain).not.toContain('**')
+      assertWidth(complete, 32)
+    } finally {
+      renderMarkdown.mockRestore()
+    }
   })
 
   it('窄终端状态栏自动降级', () => {
@@ -253,11 +293,11 @@ describe('OMP 风格渲染', () => {
       expect(plain).toContain('· 0s')
       expect(plain).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
 
-      vi.advanceTimersByTime(80)
+      vi.advanceTimersByTime(250)
       const nextFrame = app.render(64).map(stripTerminalSequences).join('\n')
       expect(nextFrame).not.toBe(plain)
 
-      vi.advanceTimersByTime(1920)
+      vi.advanceTimersByTime(1750)
       const elapsed = app.render(64).map(stripTerminalSequences).join('\n')
       expect(elapsed).toContain('· 2s')
 
@@ -342,6 +382,61 @@ describe('OMP 风格渲染', () => {
       app.dispose()
       vi.useRealTimers()
     }
+  })
+
+  it('工作状态渲染无副作用，并在可见流式输出开始后停止动画', () => {
+    vi.useFakeTimers()
+    const terminal = new MemoryTerminal()
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore()
+    store.setStatus('running')
+    const requestRender = vi.spyOn(tui, 'requestRender')
+    const app = new App(tui, store, new ToolPresenter(undefined), () => undefined)
+    try {
+      requestRender.mockClear()
+      app.render(48)
+      app.render(48)
+      expect(requestRender).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(250)
+      expect(requestRender).toHaveBeenCalledOnce()
+
+      store.appendEvent({
+        type: 'assistant/chunk',
+        seq: 0,
+        time: 0,
+        data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: '第一行\n' } },
+      })
+      expect(app.render(48).map(stripTerminalSequences).join('\n')).not.toContain('⟨esc⟩')
+
+      requestRender.mockClear()
+      vi.advanceTimersByTime(1_000)
+      expect(requestRender).not.toHaveBeenCalled()
+    } finally {
+      app.dispose()
+      requestRender.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('复用流式 Assistant 的稳定行，只替换可变尾部', () => {
+    const base = {
+      kind: 'assistant' as const,
+      key: 'assistant:progressive',
+      turn: 1,
+      step: 1,
+      reasoning: '',
+      blocks: [],
+      streaming: true,
+    }
+    const block = new AssistantBlock({ ...base, seq: 1, text: '第一行\n第二' }, true)
+    expect(block.render(32).map(stripTerminalSequences).join('\n')).toContain('第二')
+
+    block.setEntry({ ...base, seq: 2, text: '第一行\n第二行\n第三' }, true)
+    const updated = block.render(32).map(stripTerminalSequences).join('\n')
+    expect(updated.match(/第一行/g)).toHaveLength(1)
+    expect(updated.match(/第二行/g)).toHaveLength(1)
+    expect(updated.match(/第三/g)).toHaveLength(1)
   })
 
   it('工作计时使用紧凑的时分秒格式', () => {

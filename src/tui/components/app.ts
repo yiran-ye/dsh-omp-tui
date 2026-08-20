@@ -1,17 +1,31 @@
-import { Container, type TUI } from '@earendil-works/pi-tui'
+import { VStack, type Component, type TUI } from '@earendil-works/pi-tui'
 import type { ToolPresenter } from '../../runtime/tool-presentation.js'
 import type { TuiStore } from '../store.js'
-import type { TuiSnapshot } from '../state.js'
+import type { TranscriptEntry, TuiSnapshot } from '../state.js'
 import { theme } from '../theme.js'
 import { paintBackground, wrapPlain } from './common.js'
 import { PromptEditor } from './prompt-editor.js'
 import { Transcript } from './transcript.js'
+import { TranscriptScrollView } from './transcript-scroll-view.js'
 import { Welcome } from './welcome.js'
-import { resolveWorkingActivity, WorkingStatus } from './working-status.js'
+import { hasVisibleAssistantStream, resolveWorkingActivity, WorkingStatus } from './working-status.js'
+
+interface CachedStaticBody {
+  readonly transcript: readonly TranscriptEntry[]
+  readonly reasoningVisible: boolean
+  readonly provider: string | undefined
+  readonly model: string | undefined
+  readonly mcpServers: TuiSnapshot['mcpServers']
+  readonly recentSessions: TuiSnapshot['recentSessions']
+  readonly notice: string | undefined
+  readonly lifecycle: TuiSnapshot['lifecycle']
+  readonly width: number
+  readonly lines: string[]
+}
 
 interface CachedBody {
-  readonly snapshot: TuiSnapshot
-  readonly width: number
+  readonly staticBody: readonly string[]
+  readonly activity: readonly string[]
   readonly lines: string[]
 }
 
@@ -21,11 +35,14 @@ interface CachedRender {
   readonly lines: string[]
 }
 
-export class App extends Container {
+export class App extends VStack {
   readonly prompt: PromptEditor
   private snapshot: TuiSnapshot
+  private promptSnapshot: TuiSnapshot
   private readonly transcript: Transcript
   private readonly workingStatus: WorkingStatus
+  private readonly body: Component
+  private staticBodyCache: CachedStaticBody | undefined
   private bodyCache: CachedBody | undefined
   private renderCache: CachedRender | undefined
   private followingOutput = true
@@ -40,18 +57,32 @@ export class App extends Container {
   ) {
     super()
     this.snapshot = store.getSnapshot()
+    this.promptSnapshot = this.snapshot
     this.transcript = new Transcript(this.snapshot, this.tools)
     this.workingStatus = new WorkingStatus(tui)
     this.syncWorkingStatus(this.snapshot)
     this.prompt = new PromptEditor(tui, onSubmit, this.snapshot)
-    this.addChild(this.prompt)
-    this.unsubscribe = store.subscribe((snapshot) => {
-      if (!this.followingOutput && snapshot.lifecycle !== 'closing' && snapshot.sessionId === this.snapshot.sessionId) {
-        this.pendingSnapshot = snapshot
-        return
-      }
-      this.applySnapshot(snapshot)
-    })
+    this.body = {
+      invalidate: () => {
+        this.staticBodyCache = undefined
+        this.bodyCache = undefined
+        this.renderCache = undefined
+        this.transcript.invalidate()
+      },
+      render: (width) => this.renderBody(width),
+    }
+    const scrollView = new TranscriptScrollView(this.body, {
+      follow: 'end',
+      primary: true,
+      // Overlay the thumb only while scrolling. Reserving a permanent scrollbar
+      // column forces pi-tui to ANSI-composite every visible transcript row on
+      // every wheel frame, which is noticeably slower for long conversations.
+      scrollbar: 'auto',
+      scrollbarStyle: () => theme.accent('▐'),
+    }, (following) => this.setFollowingOutput(following))
+    this.addChild(scrollView, { basis: 1, grow: 1, shrink: 1, minSize: 1 })
+    this.addChild(this.prompt, { basis: 'auto', shrink: 1, minSize: 3 })
+    this.unsubscribe = store.subscribe((snapshot) => this.receiveSnapshot(snapshot))
   }
 
   dispose(): void {
@@ -83,12 +114,18 @@ export class App extends Container {
   private renderBody(width: number): string[] {
     const staticBody = this.renderStaticBody(width)
     const activity = this.workingStatus.render(width)
-    return activity.length === 0 ? staticBody : [...staticBody, ...activity, '']
+    if (activity.length === 0) return staticBody
+    if (this.bodyCache?.staticBody === staticBody && sameLines(this.bodyCache.activity, activity)) {
+      return this.bodyCache.lines
+    }
+    const lines = [...staticBody, ...activity, '']
+    this.bodyCache = { staticBody, activity, lines }
+    return lines
   }
 
   private renderStaticBody(width: number): string[] {
-    if (this.bodyCache?.snapshot === this.snapshot && this.bodyCache.width === width) return this.bodyCache.lines
     const safeWidth = Math.max(1, width)
+    if (sameStaticBody(this.staticBodyCache, this.snapshot, safeWidth)) return this.staticBodyCache.lines
     const lines = new Welcome(this.snapshot).render(safeWidth)
     const transcript = this.transcript.render(safeWidth)
     if (transcript.length > 0) {
@@ -108,23 +145,72 @@ export class App extends Container {
       lines.push(theme.dim('正在关闭会话…'))
     }
     if (lines.length > 0) lines.push('')
-    this.bodyCache = { snapshot: this.snapshot, width: safeWidth, lines }
+    this.staticBodyCache = {
+      transcript: this.snapshot.transcript,
+      reasoningVisible: this.snapshot.reasoningVisible,
+      provider: this.snapshot.provider,
+      model: this.snapshot.model,
+      mcpServers: this.snapshot.mcpServers,
+      recentSessions: this.snapshot.recentSessions,
+      notice: this.snapshot.notice,
+      lifecycle: this.snapshot.lifecycle,
+      width: safeWidth,
+      lines,
+    }
     return lines
+  }
+
+  private receiveSnapshot(snapshot: TuiSnapshot): void {
+    const promptChanged = this.updatePromptSnapshot(snapshot)
+    if (!this.followingOutput && snapshot.lifecycle !== 'closing' && snapshot.sessionId === this.snapshot.sessionId) {
+      this.pendingSnapshot = snapshot
+      if (promptChanged) this.tui.requestRender()
+      return
+    }
+    this.applySnapshot(snapshot)
   }
 
   private applySnapshot(snapshot: TuiSnapshot): void {
     this.pendingSnapshot = undefined
     this.snapshot = snapshot
     this.transcript.setSnapshot(snapshot)
-    this.prompt.setSnapshot(snapshot)
+    this.updatePromptSnapshot(snapshot)
     this.syncWorkingStatus(snapshot)
-    this.invalidate()
+    this.renderCache = undefined
     this.tui.requestRender()
   }
 
-  private syncWorkingStatus(snapshot: TuiSnapshot): void {
-    this.workingStatus.setActivity(resolveWorkingActivity(snapshot, this.tools))
+  private updatePromptSnapshot(snapshot: TuiSnapshot): boolean {
+    if (samePromptState(this.promptSnapshot, snapshot)) return false
+    this.promptSnapshot = snapshot
+    this.prompt.setSnapshot(snapshot)
+    this.renderCache = undefined
+    return true
   }
+
+  private syncWorkingStatus(snapshot: TuiSnapshot): void {
+    this.workingStatus.setActivity(
+      hasVisibleAssistantStream(snapshot) ? undefined : resolveWorkingActivity(snapshot, this.tools),
+    )
+  }
+}
+
+function sameStaticBody(cache: CachedStaticBody | undefined, snapshot: TuiSnapshot, width: number): cache is CachedStaticBody {
+  return cache?.transcript === snapshot.transcript
+    && cache.reasoningVisible === snapshot.reasoningVisible
+    && cache.provider === snapshot.provider
+    && cache.model === snapshot.model
+    && cache.mcpServers === snapshot.mcpServers
+    && cache.recentSessions === snapshot.recentSessions
+    && cache.notice === snapshot.notice
+    && cache.lifecycle === snapshot.lifecycle
+    && cache.width === width
+}
+
+function samePromptState(left: TuiSnapshot, right: TuiSnapshot): boolean {
+  return left.statusLine === right.statusLine
+    && left.harness === right.harness
+    && left.model === right.model
 }
 
 function sameLines(left: readonly string[], right: readonly string[]): boolean {

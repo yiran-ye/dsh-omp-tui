@@ -20,16 +20,31 @@ export class Transcript implements Component {
     readonly width: number
     readonly lines: string[]
   }>()
+  private readonly streamingAssistants = new Map<string, AssistantBlock>()
 
   constructor(snapshot: TuiSnapshot, private readonly tools: ToolPresenter) {
     this.snapshot = snapshot
   }
 
   setSnapshot(snapshot: TuiSnapshot): void {
+    if (snapshot.sessionId !== this.snapshot.sessionId || snapshot.lastSeq < this.snapshot.lastSeq) {
+      this.streamingAssistants.clear()
+    }
     this.snapshot = snapshot
+    const activeKeys = new Set(
+      snapshot.transcript
+        .filter((entry) => entry.kind === 'assistant' && entry.streaming)
+        .map((entry) => entry.key),
+    )
+    for (const key of this.streamingAssistants.keys()) {
+      if (!activeKeys.has(key)) this.streamingAssistants.delete(key)
+    }
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    this.cache = undefined
+    for (const assistant of this.streamingAssistants.values()) assistant.invalidate()
+  }
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width)
@@ -55,6 +70,16 @@ export class Transcript implements Component {
   }
 
   private renderEntry(entry: TranscriptEntry, width: number): string[] {
+    if (entry.kind === 'assistant' && entry.streaming) {
+      let component = this.streamingAssistants.get(entry.key)
+      if (component === undefined) {
+        component = new AssistantBlock(entry, this.snapshot.reasoningVisible)
+        this.streamingAssistants.set(entry.key, component)
+      } else {
+        component.setEntry(entry, this.snapshot.reasoningVisible)
+      }
+      return fitLines(component.render(width), width)
+    }
     const cached = this.entryCache.get(entry)
     if (cached?.width === width && cached.reasoningVisible === this.snapshot.reasoningVisible) return cached.lines
     const component = entry.kind === 'user'

@@ -41,7 +41,13 @@ Editor submit
 
 `TuiStore` 不订阅 Cordis。`AgentSessionBinding` 是唯一 Event Adapter，在 replay
 期间缓存并排序可能重叠的实时事件，再依靠 `seq <= lastSeq` 丢弃重复事件。
-流式输出只保留每个 block 当前累积值；最终 `assistant/message` 替换临时块。
+实时 `assistant/chunk` 先按同一 block 合并，并在完整换行处形成可显示批次。正常情况下
+每 50ms 提交一个批次；积压达到 8 行时切换到一个零延迟追赶帧，同一事件循环内的突发
+输出会先合并，最老批次等待 120ms 时也会批量追赶。最终事件、Agent 状态变化与断开连接
+则无条件冲刷全部尾部。流式显示帧不触发上下文 token 重算，直到最终事件或生命周期边界
+再同步。这样终端写入速度与模型 token 速度解耦，同时不会让积压持续增长。流式 Assistant
+组件复用已经排版的稳定前缀，只重排最后一个未完成行；
+最终 `assistant/message` 替换临时块并执行完整 Markdown 渲染。
 
 最近会话不是 Transcript 投影的一部分。启动和新建 Session 后，独立的可取消查询按
 `process.cwd()` 过滤、排除当前 Session、截取 4 条并批量折叠标题，最终只把轻量展示
@@ -113,6 +119,11 @@ shutdown 都会显式 settle Promise，不留下等待中的 Agent。
 ## 终端模型
 
 `ProcessTerminal + TuiAltScreen` 使用备用屏缓冲区和差量绘制，并由应用接管滚动。
+根布局将 Transcript 滚动区与固定底部输入框分离，因此输入帧不需要重新扁平化整份
+会话文档；滚动条只在滚动时覆盖显示，不预留内容列，以便终端绘制器直接复用可见行。
+向上浏览历史时继续缓存最新 Transcript，回到底部后一次追赶。
+工作状态动画使用 250ms 自调度时钟，渲染函数本身无副作用；一旦 Assistant 已有可见
+流式内容就停止动画，避免 Loader 时钟与输出时钟叠加触发终端刷新。
 `TerminalRestore` 幂等关闭 synchronized output、bracketed paste 和 keyboard
 protocol，恢复 raw mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIGHUP、未捕获
 异常、Promise rejection 和流断开，且正常路径不直接调用 `process.exit()`。
