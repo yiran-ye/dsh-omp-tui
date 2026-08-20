@@ -49,6 +49,14 @@ function collectContent(content: unknown): { text: string; reasoning: string } {
   return { text: text.join('\n\n'), reasoning: reasoning.join('\n\n') }
 }
 
+const SYSTEM_REMINDER_BLOCK = /<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder\s*>/gi
+
+function stripSystemReminderBlocks(text: string): string {
+  const stripped = text.replace(SYSTEM_REMINDER_BLOCK, '')
+  if (stripped === text) return text
+  return stripped.replace(/\n[\t ]*\n(?:[\t ]*\n)+/g, '\n\n')
+}
+
 function upsertTranscript(snapshot: TuiSnapshot, entry: TranscriptEntry): TuiSnapshot {
   const index = snapshot.transcript.findIndex((candidate) => candidate.key === entry.key)
   if (index === -1) return { ...snapshot, transcript: [...snapshot.transcript, entry] }
@@ -60,6 +68,8 @@ function upsertTranscript(snapshot: TuiSnapshot, entry: TranscriptEntry): TuiSna
 function userEntry(event: SessionEventLike): UserTranscriptEntry | undefined {
   if (!isRecord(event.data)) return undefined
   const content = collectContent(event.data.content)
+  const visibleText = stripSystemReminderBlocks(content.text)
+  if (visibleText.trim().length === 0) return undefined
   const source = isRecord(event.data.source) ? event.data.source : undefined
   const sourceKind = source === undefined ? undefined : stringField(source, 'kind')
   if (source === undefined || sourceKind !== 'plugin') {
@@ -67,21 +77,23 @@ function userEntry(event: SessionEventLike): UserTranscriptEntry | undefined {
       kind: 'user',
       key: `user:${event.seq}`,
       seq: event.seq,
-      text: content.text,
+      text: visibleText,
       injected: false,
     }
   }
 
   const plugin = stringField(source, 'plugin') ?? '插件'
   const form = stringField(source, 'form')
-  const summary = form === 'notice' ? stringField(source, 'summary') : undefined
+  const summary = form === 'notice'
+    ? stripSystemReminderBlocks(stringField(source, 'summary') ?? '')
+    : undefined
   const label = [plugin, form].filter((part): part is string => part !== undefined).join(' · ')
   return {
     kind: 'user',
     key: `user:${event.seq}`,
     seq: event.seq,
-    text: summary ?? `注入上下文 · ${label}`,
-    detail: content.text,
+    text: summary !== undefined && summary.trim().length > 0 ? summary : `注入上下文 · ${label}`,
+    detail: visibleText,
     injected: true,
     sourceLabel: label,
   }

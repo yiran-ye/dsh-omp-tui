@@ -1,4 +1,4 @@
-import { ProcessTerminal, TuiAltScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
+import { isKeyRelease, parseKey, ProcessTerminal, TuiAltScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
 import type { InteractionQueue } from '../runtime/interaction-queue.js'
 import type { ModelCatalogItem, ModelCatalogPort } from '../runtime/model-catalog.js'
 import type { ToolLookup } from '../runtime/tool-presentation.js'
@@ -426,28 +426,31 @@ export function mountTui(options: MountOptions): MountedTui {
 
   const removeOverlayStoreListener = options.store.subscribe(syncOverlay)
   const removeInteractionListener = options.interactions?.subscribe(syncOverlay)
-  const removeInputListener = tui.addInputListener((data) => policy.handle(data, {
-    status: options.store.getSnapshot().status,
-    input: app.prompt.input.getText(),
-    overlayOpen: options.store.getSnapshot().overlay.kind !== 'none'
-      || options.interactions?.getSnapshot().active !== undefined,
-    commandRunning: activeSlashCommand !== undefined,
-    clearInput: () => app.prompt.input.setText(''),
-    cancel: () => options.actions.cancel(),
-    cancelCommand: () => activeSlashCommand?.abort(),
-    exit: () => {
-      runAction(options.actions.shutdown(), '退出')
-    },
-    openTools: () => options.store.setOverlay({ kind: 'tools', selected: 0 }),
-    closeOverlay: () => {
-      const interaction = options.interactions?.getSnapshot().active
-      if (interaction?.kind === 'approval') options.interactions?.answerApproval(interaction.id, 'cancelled')
-      else if (interaction?.kind === 'question') options.interactions?.skipQuestion(interaction.id)
-      else if (options.store.getSnapshot().overlay.kind === 'catalog') closeCatalog()
-      else options.store.setOverlay({ kind: 'none' })
-    },
-    notice: (message) => options.store.setNotice(message),
-  }))
+  const removeInputListener = tui.addInputListener((data) => {
+    if (!isKeyRelease(data) && parseKey(data) !== undefined) options.store.clearNotice()
+    return policy.handle(data, {
+      status: options.store.getSnapshot().status,
+      input: app.prompt.input.getText(),
+      overlayOpen: options.store.getSnapshot().overlay.kind !== 'none'
+        || options.interactions?.getSnapshot().active !== undefined,
+      commandRunning: activeSlashCommand !== undefined,
+      clearInput: () => app.prompt.input.setText(''),
+      cancel: () => options.actions.cancel(),
+      cancelCommand: () => activeSlashCommand?.abort(),
+      toggleReasoning: () => options.store.toggleReasoningVisibility(),
+      exit: () => {
+        runAction(options.actions.shutdown(), '退出')
+      },
+      openTools: () => options.store.setOverlay({ kind: 'tools', selected: 0 }),
+      closeOverlay: () => {
+        const interaction = options.interactions?.getSnapshot().active
+        if (interaction?.kind === 'approval') options.interactions?.answerApproval(interaction.id, 'cancelled')
+        else if (interaction?.kind === 'question') options.interactions?.skipQuestion(interaction.id)
+        else if (options.store.getSnapshot().overlay.kind === 'catalog') closeCatalog()
+        else options.store.setOverlay({ kind: 'none' })
+      },
+    })
+  })
   tui.start()
   tui.setFocus(app.prompt.input)
   syncOverlay()

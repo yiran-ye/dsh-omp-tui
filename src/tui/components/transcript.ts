@@ -9,8 +9,17 @@ import { UserBlock } from './user-block.js'
 
 export class Transcript implements Component {
   private snapshot: TuiSnapshot
-  private cache: { readonly transcript: readonly TranscriptEntry[]; readonly width: number; readonly lines: string[] } | undefined
-  private readonly entryCache = new WeakMap<TranscriptEntry, { readonly width: number; readonly lines: string[] }>()
+  private cache: {
+    readonly transcript: readonly TranscriptEntry[]
+    readonly reasoningVisible: boolean
+    readonly width: number
+    readonly lines: string[]
+  } | undefined
+  private readonly entryCache = new WeakMap<TranscriptEntry, {
+    readonly reasoningVisible: boolean
+    readonly width: number
+    readonly lines: string[]
+  }>()
 
   constructor(snapshot: TuiSnapshot, private readonly tools: ToolPresenter) {
     this.snapshot = snapshot
@@ -24,7 +33,11 @@ export class Transcript implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width)
-    if (this.cache?.transcript === this.snapshot.transcript && this.cache.width === safeWidth) {
+    if (
+      this.cache?.transcript === this.snapshot.transcript
+      && this.cache.reasoningVisible === this.snapshot.reasoningVisible
+      && this.cache.width === safeWidth
+    ) {
       return this.cache.lines
     }
     const lines: string[] = []
@@ -32,22 +45,27 @@ export class Transcript implements Component {
       if (lines.length > 0) lines.push('')
       lines.push(...this.renderEntry(entry, safeWidth))
     }
-    this.cache = { transcript: this.snapshot.transcript, width: safeWidth, lines }
+    this.cache = {
+      transcript: this.snapshot.transcript,
+      reasoningVisible: this.snapshot.reasoningVisible,
+      width: safeWidth,
+      lines,
+    }
     return lines
   }
 
   private renderEntry(entry: TranscriptEntry, width: number): string[] {
     const cached = this.entryCache.get(entry)
-    if (cached?.width === width) return cached.lines
+    if (cached?.width === width && cached.reasoningVisible === this.snapshot.reasoningVisible) return cached.lines
     const component = entry.kind === 'user'
       ? new UserBlock(entry)
       : entry.kind === 'assistant'
-        ? new AssistantBlock(entry)
+        ? new AssistantBlock(entry, this.snapshot.reasoningVisible)
         : entry.kind === 'tool'
           ? new ToolCard(entry, this.tools)
           : new ErrorBlock(entry)
     const lines = fitLines(component.render(width), width)
-    this.entryCache.set(entry, { width, lines })
+    this.entryCache.set(entry, { reasoningVisible: this.snapshot.reasoningVisible, width, lines })
     return lines
   }
 }

@@ -7,6 +7,7 @@ import { paintBackground, wrapPlain } from './common.js'
 import { PromptEditor } from './prompt-editor.js'
 import { Transcript } from './transcript.js'
 import { Welcome } from './welcome.js'
+import { resolveWorkingActivity, WorkingStatus } from './working-status.js'
 
 interface CachedBody {
   readonly snapshot: TuiSnapshot
@@ -24,6 +25,7 @@ export class App extends Container {
   readonly prompt: PromptEditor
   private snapshot: TuiSnapshot
   private readonly transcript: Transcript
+  private readonly workingStatus: WorkingStatus
   private bodyCache: CachedBody | undefined
   private renderCache: CachedRender | undefined
   private followingOutput = true
@@ -33,12 +35,14 @@ export class App extends Container {
   constructor(
     private readonly tui: TUI,
     store: TuiStore,
-    tools: ToolPresenter,
+    private readonly tools: ToolPresenter,
     onSubmit: (text: string) => void,
   ) {
     super()
     this.snapshot = store.getSnapshot()
-    this.transcript = new Transcript(this.snapshot, tools)
+    this.transcript = new Transcript(this.snapshot, this.tools)
+    this.workingStatus = new WorkingStatus(tui)
+    this.syncWorkingStatus(this.snapshot)
     this.prompt = new PromptEditor(tui, onSubmit, this.snapshot)
     this.addChild(this.prompt)
     this.unsubscribe = store.subscribe((snapshot) => {
@@ -52,6 +56,7 @@ export class App extends Container {
 
   dispose(): void {
     this.unsubscribe()
+    this.workingStatus.dispose()
   }
 
   setFollowingOutput(following: boolean): void {
@@ -76,6 +81,12 @@ export class App extends Container {
   }
 
   private renderBody(width: number): string[] {
+    const staticBody = this.renderStaticBody(width)
+    const activity = this.workingStatus.render(width)
+    return activity.length === 0 ? staticBody : [...staticBody, ...activity, '']
+  }
+
+  private renderStaticBody(width: number): string[] {
     if (this.bodyCache?.snapshot === this.snapshot && this.bodyCache.width === width) return this.bodyCache.lines
     const safeWidth = Math.max(1, width)
     const lines = new Welcome(this.snapshot).render(safeWidth)
@@ -96,10 +107,6 @@ export class App extends Container {
       if (lines.length > 0) lines.push('')
       lines.push(theme.dim('正在关闭会话…'))
     }
-    if (this.snapshot.status === 'running' && this.snapshot.lifecycle === 'active') {
-      if (lines.length > 0) lines.push('')
-      lines.push(...wrapPlain(`${theme.warning('⟳ 正在生成')} ${theme.dim('· Ctrl+C 取消')}`, safeWidth))
-    }
     if (lines.length > 0) lines.push('')
     this.bodyCache = { snapshot: this.snapshot, width: safeWidth, lines }
     return lines
@@ -110,8 +117,13 @@ export class App extends Container {
     this.snapshot = snapshot
     this.transcript.setSnapshot(snapshot)
     this.prompt.setSnapshot(snapshot)
+    this.syncWorkingStatus(snapshot)
     this.invalidate()
     this.tui.requestRender()
+  }
+
+  private syncWorkingStatus(snapshot: TuiSnapshot): void {
+    this.workingStatus.setActivity(resolveWorkingActivity(snapshot, this.tools))
   }
 }
 

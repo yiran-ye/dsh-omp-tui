@@ -39,6 +39,53 @@ describe('Session Event reducer', () => {
     expect(injected?.kind === 'user' ? injected.detail : '').toContain('非常长')
   })
 
+  it('仅从用户与插件注入消息的可见投影中移除完整 system-reminder 块', () => {
+    const store = new TuiStore()
+    store.appendEvent(event(0, 'user/message', {
+      content: [{
+        type: 'text',
+        text: '先检查代码\n<system-reminder reason="rule">\n内部提示\n</system-reminder>\n再运行测试',
+      }],
+      source: { kind: 'user' },
+    }))
+    store.appendEvent(event(1, 'user/message', {
+      content: [{ type: 'text', text: '<system-reminder>只含提醒</system-reminder>' }],
+      source: { kind: 'user' },
+    }))
+    store.appendEvent(event(2, 'user/message', {
+      content: [{ type: 'text', text: '<SYSTEM-REMINDER>隐藏</SYSTEM-REMINDER>\n保留的注入内容' }],
+      source: { kind: 'plugin', plugin: 'instructions', form: 'instructions' },
+    }))
+    store.appendEvent(event(3, 'user/message', {
+      content: [{ type: 'text', text: '<system-reminder>未闭合' }],
+      source: { kind: 'user' },
+    }))
+    store.appendEvent(event(4, 'user/message', {
+      content: [{ type: 'text', text: '  保留首行缩进\n' }],
+      source: { kind: 'user' },
+    }))
+
+    expect(store.getSnapshot().transcript).toHaveLength(4)
+    expect(store.getSnapshot().transcript[0]).toMatchObject({
+      kind: 'user',
+      text: '先检查代码\n\n再运行测试',
+    })
+    const injected = store.getSnapshot().transcript[1]
+    expect(injected).toMatchObject({ kind: 'user', injected: true })
+    if (injected?.kind !== 'user') return
+    expect(injected.detail).toContain('保留的注入内容')
+    expect(injected.detail).not.toContain('隐藏')
+    expect(store.getSnapshot().transcript[2]).toMatchObject({
+      kind: 'user',
+      text: '<system-reminder>未闭合',
+    })
+    expect(store.getSnapshot().transcript[3]).toMatchObject({
+      kind: 'user',
+      text: '  保留首行缩进\n',
+    })
+    expect(store.getSnapshot().lastSeq).toBe(4)
+  })
+
   it('累计 reasoning 与正文 chunk，且不保存逐 token 条目', () => {
     const store = new TuiStore()
     store.appendEvent(event(0, 'assistant/chunk', {

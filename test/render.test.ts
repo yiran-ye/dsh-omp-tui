@@ -13,6 +13,7 @@ import { ToolCard } from '../src/tui/components/tool-card.js'
 import { ToolDetailDialog } from '../src/tui/components/tool-detail-dialog.js'
 import { UserBlock } from '../src/tui/components/user-block.js'
 import { Welcome } from '../src/tui/components/welcome.js'
+import { resolveWorkingActivity } from '../src/tui/components/working-status.js'
 import { HelpDialog } from '../src/tui/components/help-dialog.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { ToolTranscriptEntry } from '../src/tui/state.js'
@@ -181,6 +182,92 @@ describe('OMP 风格渲染', () => {
     expect(second).toBe(first)
     renderToolCard.mockRestore()
     app.dispose()
+  })
+
+  it('思考默认完整显示，并由全局开关隐藏和恢复', () => {
+    const terminal = new MemoryTerminal()
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore([
+      {
+        type: 'assistant/message',
+        seq: 0,
+        time: 0,
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            content: [
+              { type: 'reasoning', text: '第一步分析\n第二步验证\n第三步完成' },
+              { type: 'text', text: '最终答案' },
+            ],
+          },
+        },
+      },
+    ])
+    const app = new App(tui, store, new ToolPresenter(undefined), () => undefined)
+
+    const visible = app.render(48).map(stripTerminalSequences).join('\n')
+    expect(visible).toContain('第一步分析')
+    expect(visible).toContain('第三步完成')
+
+    store.toggleReasoningVisibility()
+    const hidden = app.render(48).map(stripTerminalSequences).join('\n')
+    expect(hidden).not.toContain('第一步分析')
+    expect(hidden).not.toContain('第三步完成')
+    expect(hidden).toContain('最终答案')
+
+    store.toggleReasoningVisibility()
+    const restored = app.render(48).map(stripTerminalSequences).join('\n')
+    expect(restored).toContain('第一步分析')
+    expect(restored).toContain('第三步完成')
+    assertWidth(app.render(48), 48)
+    app.dispose()
+  })
+
+  it('运行时显示当前工具步骤与 Esc 提示，并在无工具时显示思考阶段', () => {
+    vi.useFakeTimers()
+    const terminal = new MemoryTerminal()
+    const tui = new TuiMainScreen(terminal, true)
+    const store = new TuiStore([
+      {
+        type: 'tool/call',
+        seq: 0,
+        time: 0,
+        data: { callId: 'activity-call', name: 'read', arguments: '{"path":"docs/startup.md"}' },
+      },
+    ])
+    store.setStatus('running')
+    const presenter = new ToolPresenter({
+      get: () => ({ presentCall: () => ({ card: 'generic', title: '查看开发文档启动细节', kind: 'read' }) }),
+    })
+    const app = new App(tui, store, presenter, () => undefined)
+    try {
+      const plain = app.render(64).map(stripTerminalSequences).join('\n')
+      expect(plain).toContain('查看开发文档启动细节')
+      expect(plain).toContain('⟨esc⟩')
+      expect(plain).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
+
+      vi.advanceTimersByTime(80)
+      const nextFrame = app.render(64).map(stripTerminalSequences).join('\n')
+      expect(nextFrame).not.toBe(plain)
+
+      const thinkingStore = new TuiStore([
+        {
+          type: 'assistant/chunk',
+          seq: 0,
+          time: 0,
+          data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: '分析中' } },
+        },
+      ])
+      thinkingStore.setStatus('running')
+      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe('正在思考')
+
+      store.setStatus('idle')
+      expect(app.render(64).map(stripTerminalSequences).join('\n')).not.toContain('⟨esc⟩')
+    } finally {
+      app.dispose()
+      vi.useRealTimers()
+    }
   })
 
   it('Tool Detail 滚动时复用已展开的内容', () => {

@@ -12,9 +12,13 @@ import {
 
 export type StoreListener = (snapshot: TuiSnapshot) => void
 
+const NOTICE_DURATION_MS = 4_000
+
 export class TuiStore {
   private snapshot: TuiSnapshot = createInitialSnapshot()
   private readonly listeners = new Set<StoreListener>()
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined
+  private noticeVersion = 0
 
   constructor(events: readonly SessionEventLike[] = []) {
     this.replay(events)
@@ -36,6 +40,7 @@ export class TuiStore {
       capabilities: this.snapshot.capabilities,
       notice: this.snapshot.notice,
       recentSessions: this.snapshot.recentSessions,
+      reasoningVisible: this.snapshot.reasoningVisible,
       statusLine: this.snapshot.statusLine,
     }
     for (const event of events) this.snapshot = reduceSessionEvent(this.snapshot, event)
@@ -54,6 +59,12 @@ export class TuiStore {
 
   setStatus(status: AgentStatus): void {
     this.patch({ status })
+  }
+
+  toggleReasoningVisibility(): boolean {
+    const reasoningVisible = !this.snapshot.reasoningVisible
+    this.patch({ reasoningVisible })
+    return reasoningVisible
   }
 
   setInboxCount(inboxCount: number): void {
@@ -78,7 +89,22 @@ export class TuiStore {
   }
 
   setNotice(notice: string | undefined): void {
-    this.patch({ notice })
+    this.clearNoticeTimer()
+    const version = ++this.noticeVersion
+    if (notice !== undefined) {
+      const timer = setTimeout(() => {
+        if (this.noticeVersion !== version) return
+        this.noticeTimer = undefined
+        if (this.snapshot.notice === notice) this.patch({ notice: undefined })
+      }, NOTICE_DURATION_MS)
+      timer.unref()
+      this.noticeTimer = timer
+    }
+    if (this.snapshot.notice !== notice) this.patch({ notice })
+  }
+
+  clearNotice(): void {
+    if (this.snapshot.notice !== undefined) this.setNotice(undefined)
   }
 
   setOverlay(overlay: OverlayState): void {
@@ -91,6 +117,12 @@ export class TuiStore {
 
   private patch(values: Partial<TuiSnapshot>): void {
     this.commit({ ...this.snapshot, ...values })
+  }
+
+  private clearNoticeTimer(): void {
+    if (this.noticeTimer === undefined) return
+    clearTimeout(this.noticeTimer)
+    this.noticeTimer = undefined
   }
 
   private commit(next: TuiSnapshot): void {

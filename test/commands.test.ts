@@ -19,10 +19,10 @@ function context(status: AgentStatus, input = '') {
     clearInput: vi.fn<() => void>(),
     cancel: vi.fn<() => void>(),
     cancelCommand: vi.fn<() => void>(),
+    toggleReasoning: vi.fn<() => boolean>(() => true),
     exit: vi.fn<() => void>(),
     openTools: vi.fn<() => void>(),
     closeOverlay: vi.fn<() => void>(),
-    notice: vi.fn<(message: string) => void>(),
   } satisfies InputContext
 }
 
@@ -72,6 +72,7 @@ describe('输入策略与 Slash Commands', () => {
     expect(commands.find((command) => command.name === 'help')).toMatchObject({ description: '显示命令和快捷键' })
     expect(formatHelpText(commands)).toContain('/compact  压缩上下文')
     expect(formatHelpText(commands)).toContain('/release-notes  生成发布说明')
+    expect(formatHelpText(commands)).toContain('Ctrl+T 切换思考过程')
   })
 
   it('Ctrl+C 在 running 时取消任务', () => {
@@ -90,6 +91,33 @@ describe('输入策略与 Slash Commands', () => {
 
     policy.handle('\u0003', state)
     expect(state.cancelCommand).toHaveBeenCalledTimes(2)
+  })
+
+  it('Esc 在无弹窗且 Agent 运行时取消任务', () => {
+    const policy = new InputPolicy()
+    const state = context('running')
+
+    expect(policy.handle('\u001b', state)).toEqual({ consume: true })
+    expect(state.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('Ctrl+T 切换思考过程并消费按键', () => {
+    const policy = new InputPolicy()
+    const state = context('idle')
+    state.toggleReasoning.mockReturnValue(false)
+
+    expect(policy.handle('\u0014', state)).toEqual({ consume: true })
+    expect(state.toggleReasoning).toHaveBeenCalledOnce()
+  })
+
+  it('忽略 Kitty 键盘协议的释放事件，避免 Ctrl+T 二次切换', () => {
+    const policy = new InputPolicy()
+    const state = context('idle')
+
+    policy.handle('\u001b[116;5u', state)
+    policy.handle('\u001b[116;5:3u', state)
+
+    expect(state.toggleReasoning).toHaveBeenCalledOnce()
   })
 
   it('Ctrl+C 在 idle 且有输入时清空输入', () => {

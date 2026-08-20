@@ -112,6 +112,61 @@ describe('备用屏挂载', () => {
     expect(mounted.app.render(64).map(stripTerminalSequences).join('\n')).toContain('滚动期间的新输出')
     mounted.stop()
   })
+
+  it('将 Ctrl+T 和 Esc 分派为思考切换与运行取消', () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore()
+    const cancel = vi.fn<() => void>()
+    store.setStatus('running')
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel,
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    terminal.input('\u001b[116;5u')
+    terminal.input('\u001b[116;5:3u')
+    expect(store.getSnapshot().reasoningVisible).toBe(false)
+    expect(store.getSnapshot().notice).toBeUndefined()
+    terminal.input('\u001b')
+    expect(cancel).toHaveBeenCalledOnce()
+    store.setStatus('idle')
+    terminal.input('\u0003')
+    expect(store.getSnapshot().notice).toBeUndefined()
+    mounted.stop()
+  })
+
+  it('用户下一次按键会立即清除通知', () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore()
+    store.setNotice('未检测到 MCP 工具。')
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    terminal.input('\u001b[120;1:3u')
+    expect(store.getSnapshot().notice).toBe('未检测到 MCP 工具。')
+    terminal.input('x')
+
+    expect(store.getSnapshot().notice).toBeUndefined()
+    mounted.stop()
+  })
 })
 
 describe('Slash Command 分派', () => {

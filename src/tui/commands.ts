@@ -1,4 +1,4 @@
-import { Key, matchesKey, type SlashCommand as AutocompleteSlashCommand } from '@earendil-works/pi-tui'
+import { isKeyRelease, Key, matchesKey, type SlashCommand as AutocompleteSlashCommand } from '@earendil-works/pi-tui'
 import type { AgentStatus } from '@deepseek-ai/dsh-agent'
 
 export interface RegisteredSlashCommand {
@@ -103,8 +103,8 @@ export function formatHelpText(commands: readonly AutocompleteSlashCommand[]): s
       return `/${command.name}${input}  ${command.description ?? ''}`.trimEnd()
     }),
     '',
-    'Enter 提交 · Shift/Alt+Enter 换行 · Ctrl+C 取消/双击退出',
-    'Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭弹窗/取消命令 · ↑/↓ 历史',
+    'Enter 提交 · Shift/Alt+Enter 换行 · Ctrl+T 切换思考过程 · Ctrl+C 取消/双击退出',
+    'Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭弹窗/取消命令/取消运行 · ↑/↓ 历史',
   ].join('\n')
 }
 
@@ -116,10 +116,10 @@ export interface InputContext {
   clearInput(): void
   cancel(): void
   cancelCommand(): void
+  toggleReasoning(): boolean
   exit(): void
   openTools(): void
   closeOverlay(): void
-  notice(message: string): void
 }
 
 export class InputPolicy {
@@ -129,6 +129,9 @@ export class InputPolicy {
   constructor(private readonly now: () => number = Date.now, private readonly doublePressMs = 1_500) {}
 
   handle(data: string, context: InputContext): { consume: boolean } | undefined {
+    // Kitty keyboard protocol emits both press and release events. The release
+    // has the same modifiers, so handling it would invoke global shortcuts twice.
+    if (isKeyRelease(data)) return { consume: true }
     if (matchesKey(data, Key.escape) && context.overlayOpen) {
       context.closeOverlay()
       this.reset()
@@ -137,6 +140,16 @@ export class InputPolicy {
     if (context.overlayOpen) return undefined
     if (matchesKey(data, Key.escape) && context.commandRunning) {
       context.cancelCommand()
+      this.reset()
+      return { consume: true }
+    }
+    if (matchesKey(data, Key.escape) && context.status === 'running') {
+      context.cancel()
+      this.reset()
+      return { consume: true }
+    }
+    if (matchesKey(data, Key.ctrl('t'))) {
+      context.toggleReasoning()
       this.reset()
       return { consume: true }
     }
@@ -177,7 +190,6 @@ export class InputPolicy {
     }
     this.lastExitKey = key
     this.lastExitAt = current
-    context.notice(`再次按 ${key === 'ctrl-c' ? 'Ctrl+C' : 'Ctrl+D'} 退出`)
   }
 
   private reset(): void {

@@ -1,6 +1,6 @@
 import type { AgentStatus } from '@deepseek-ai/dsh-agent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AgentSessionBinding, type RuntimeAgent, type RuntimeEventSource } from '../src/runtime/agent-session.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { SessionEventLike } from '../src/tui/state.js'
@@ -77,6 +77,36 @@ describe('TuiStore 与 AgentSessionBinding', () => {
       contextWindow: 1_000_000,
       compactionAvailable: true,
     })
+  })
+
+  it('新会话重置时保留本次 TUI 的思考可见性选择', () => {
+    const store = new TuiStore()
+    expect(store.getSnapshot().reasoningVisible).toBe(true)
+    expect(store.toggleReasoningVisibility()).toBe(false)
+
+    store.reset()
+
+    expect(store.getSnapshot().reasoningVisible).toBe(false)
+  })
+
+  it('通知在四秒后自动清除，且新通知会重置计时', () => {
+    vi.useFakeTimers()
+    try {
+      const store = new TuiStore()
+      store.setNotice('第一条通知')
+
+      vi.advanceTimersByTime(3_000)
+      expect(store.getSnapshot().notice).toBe('第一条通知')
+
+      store.setNotice('第一条通知')
+      vi.advanceTimersByTime(3_000)
+      expect(store.getSnapshot().notice).toBe('第一条通知')
+
+      vi.advanceTimersByTime(1_000)
+      expect(store.getSnapshot().notice).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('绑定 Session、Agent status 和 inbox，并可解除监听', () => {

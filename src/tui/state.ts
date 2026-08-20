@@ -133,6 +133,7 @@ export interface TuiSnapshot {
   readonly lastSeq: number
   readonly transcript: readonly TranscriptEntry[]
   readonly status: AgentStatus
+  readonly reasoningVisible: boolean
   readonly inboxCount: number
   readonly currentTurn: number | undefined
   readonly currentStep: number | undefined
@@ -164,6 +165,7 @@ export function createInitialSnapshot(): TuiSnapshot {
     lastSeq: -1,
     transcript: [],
     status: 'idle',
+    reasoningVisible: true,
     inboxCount: 0,
     currentTurn: undefined,
     currentStep: undefined,
