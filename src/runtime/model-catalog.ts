@@ -1,4 +1,4 @@
-import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
+import type { LlmRuntime, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 
 export interface ModelCatalogItem {
   readonly provider: string
@@ -13,8 +13,20 @@ export interface ModelCatalog {
   readonly failures: readonly string[]
 }
 
+export interface ModelReasoningEffort {
+  readonly id: ReasoningEffortId
+  readonly name: string
+  readonly description?: string
+}
+
+export interface ModelReasoning {
+  readonly efforts: readonly ModelReasoningEffort[]
+  readonly defaultEffort?: ReasoningEffortId
+}
+
 export interface ModelCatalogPort {
   list(signal: AbortSignal): Promise<ModelCatalog>
+  resolveReasoning(provider: string, model: string, signal: AbortSignal): Promise<ModelReasoning | undefined>
 }
 
 function errorMessage(error: unknown): string {
@@ -23,7 +35,7 @@ function errorMessage(error: unknown): string {
 
 /** Reads the live adapter catalog while preserving models from healthy providers. */
 export function createModelCatalog(
-  llm: Pick<LlmRuntime, 'listModels' | 'listProviders'>,
+  llm: Pick<LlmRuntime, 'listModels' | 'listProviders' | 'resolveModelInfo'>,
 ): ModelCatalogPort {
   return {
     async list(signal: AbortSignal): Promise<ModelCatalog> {
@@ -52,6 +64,18 @@ export function createModelCatalog(
       return {
         models: results.flatMap((result) => result.models),
         failures: results.flatMap((result) => result.failures),
+      }
+    },
+    async resolveReasoning(provider, model, signal): Promise<ModelReasoning | undefined> {
+      const reasoning = (await llm.resolveModelInfo(provider, model, signal)).reasoning
+      if (signal.aborted || reasoning === undefined) return undefined
+      return {
+        efforts: reasoning.efforts.map((effort) => ({
+          id: effort.id,
+          name: effort.name,
+          ...(effort.description === undefined ? {} : { description: effort.description }),
+        })),
+        ...(reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort }),
       }
     },
   }

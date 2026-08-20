@@ -133,4 +133,26 @@ describe('TuiStore 与 AgentSessionBinding', () => {
     expect(source.statusListeners).toHaveLength(0)
     expect(source.inboxListeners).toHaveLength(0)
   })
+
+  it('从 Session Header 初始化 Agent Preset，并由回放的选择事件覆盖', () => {
+    const source = new EventSource()
+    const id = SessionId('session-preset-state')
+    const initial = Session.create(id)
+    const session = Session.create(id, [{
+      type: 'agent-preset/selected',
+      seq: 0,
+      time: 0,
+      data: { agentPreset: 'code' },
+    }], { ...initial.header, agentPreset: 'standard' })
+    const agent: RuntimeAgent = {
+      session,
+      status: 'idle',
+      inbox: { nextStep: [], nextTurn: [] },
+    }
+    const store = new TuiStore()
+    const binding = new AgentSessionBinding(agent, store, source)
+
+    expect(store.getSnapshot().harness.agentPreset).toBe('code')
+    binding.disconnect()
+  })
 })

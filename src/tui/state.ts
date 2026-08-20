@@ -1,4 +1,4 @@
-import type { AgentStatus } from '@deepseek-ai/dsh-agent'
+import type { AgentStatus, ModelSelection } from '@deepseek-ai/dsh-agent'
 
 export interface SessionEventLike {
   readonly type: string
@@ -65,7 +65,11 @@ export interface HarnessStateSnapshot {
   readonly sandboxMode?: string
   readonly approvalPolicy?: string
   readonly agentPreset?: string
+  readonly collaborationMode?: CollaborationMode
 }
+
+export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+export type CollaborationMode = 'normal' | 'plan'
 
 export interface CatalogOverlayItem {
   readonly value: string
@@ -123,6 +127,7 @@ export interface StatusLineState {
   readonly cwd?: string
   readonly modelName?: string
   readonly reasoningEffort?: string
+  readonly sandboxMode?: SandboxMode
   readonly gitBranch?: string
   readonly contextTokens?: number
   readonly contextWindow?: number
@@ -144,6 +149,7 @@ export interface TuiSnapshot {
   readonly sessionId: string | undefined
   readonly provider: string | undefined
   readonly model: string | undefined
+  readonly reasoningEffort: ModelSelection['reasoningEffort']
   readonly lifecycle: TuiLifecycle
   readonly capabilities: CapabilityState
   readonly recentSessions: RecentSessionsState
@@ -176,6 +182,7 @@ export function createInitialSnapshot(): TuiSnapshot {
     sessionId: undefined,
     provider: undefined,
     model: undefined,
+    reasoningEffort: undefined,
     lifecycle: 'active',
     capabilities: DEFAULT_CAPABILITIES,
     recentSessions: { status: 'unavailable', items: [] },

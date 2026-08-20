@@ -39,7 +39,7 @@ Web Server，也不包含 Web/Browser、JSON-RPC、ACP、独立 Agent Runtime �
 
 - 欢迎页使用静态 DSH 渐变 Logo；宽终端显示双栏，窄终端自动切换为单栏。
 - 用户消息、工具状态、错误与通知使用不同的低亮底色；助手正文不再重复显示身份标题。
-- 输入框上边框使用 OMP 风格状态栏：显示模型（不含 Provider）、推理强度、工作目录、Git 分支、上下文与压缩能力。
+- 输入框上边框使用 OMP 风格状态栏：依次显示 Agent Preset、协作模式（Normal / Plan）、文件权限（Read Only / Write / Full Access）、模型及实际推理强度，然后是工作目录、Git 分支、上下文与压缩能力。
 - 运行时在输入框上方以动画显示当前工具或思考步骤，并提示可按 Esc 取消；所有弹窗使用统一边框、底色和中文操作说明。
 - 颜色按 True Color → ANSI 256 → ANSI 16 自动降级；状态栏图标需要 Nerd Font，且不提供浅色主题。
 
@@ -108,6 +108,8 @@ dsh --profile omp-tui --agent-preset code
 | Ctrl+C | 运行时取消；空闲空输入连续两次退出 |
 | Ctrl+D | 空闲空输入连续两次退出 |
 | Ctrl+T | 显示/隐藏当前 TUI 中的全部思考过程 |
+| Ctrl+R | 按当前模型公布的顺序循环切换思考等级 |
+| Shift+Tab | 在 Normal 与 Plan 协作模式之间切换 |
 | Ctrl+O | 打开/关闭工具详情弹窗 |
 | Esc | 关闭弹窗；无弹窗时取消命令或正在运行的 Agent |
 | ↑ / ↓ | 输入历史；弹窗中移动选择 |
@@ -120,7 +122,8 @@ dsh --profile omp-tui --agent-preset code
 | `/tools` | 浏览当前 Session 的完整工具参数与结果 |
 | `/skills` | 浏览可由用户调用的 Skill；选择后预填 `/<skill-name>` |
 | `/mcp` | 浏览当前已连接 MCP Server 发现的工具；选择后预填工具名 |
-| `/model` | 显示当前模型，并从已注册 Provider 的目录中切换模型 |
+| `/model` | 从已注册 Provider 的目录中依次选择模型及其思考等级 |
+| `/sandbox [mode]` | 显示或切换当前 Session 的 `read-only`、`workspace-write`、`danger-full-access` |
 | `/clear` / `/new` | flush/dispose 当前 Agent，创建新 Session，并保留输入历史 |
 | `/retry` | 重新发送上一条用户任务 |
 | `/exit` / `/quit` | flush Session 后优雅退出 |
@@ -140,9 +143,18 @@ Skill 手势注入执行。
 `mcp__<server>__<tool>` 名称，并显示由 `@deepseek-ai/dsh-mcp-client` 发现的工具；模型会在
 后续任务中自行调用它们。MCP Client 未安装、未连接或没有发现工具时，`/mcp` 会明确提示。
 
-`/model` 读取当前 `ctx.llm` 已注册 Provider 的模型目录，并标示当前选择。选择模型会更新
-当前 Agent 的 Model Selection，因此正在运行的请求不受影响，新模型会在下一次模型请求时生效；
-后续 `/clear` 创建的新 Session 也会沿用该选择。若 Settings 服务可用，选择还会保存为默认模型。
+`/model` 读取当前 `ctx.llm` 已注册 Provider 的模型目录，并标示当前选择。选中模型后，TUI 会按
+该 Provider/Model 的精确元数据继续列出可用思考等级，确认后一次性更新当前 Agent 的完整
+Model Selection。正在运行的请求不受影响，新模型与思考等级会在下一次模型请求时一起生效；
+后续 `/clear` 创建的新 Session 也会沿用该选择。`Ctrl+R` 可按适配器公布的顺序循环当前模型的
+等级；不支持思考等级的模型会给出提示。若 Settings 服务可用，完整选择还会保存为默认模型。
+
+`/sandbox` 打开当前 Session 的 Sandbox Mode 选择器；也可以使用
+`/sandbox workspace-write` 等完整模式 ID 直接切换。切换通过 DSH 的 `setSandboxMode()` 写入
+一条持久 `sandbox/mode` 事件，在下一次受沙箱约束的调用中生效，并同步更新状态栏权限标签。
+
+DSH 官方 `/plan` 命令会写入 `plan/mode` 事件：`/plan` 进入 Plan，
+`/plan off` 回到 Normal。状态栏直接回放该事件，与 Agent Preset 和 Sandbox Mode 分开显示。
 
 ### 本地 Context7 MCP
 

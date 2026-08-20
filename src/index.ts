@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-cmdline'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-compaction'
 import type {} from '@deepseek-ai/dsh-permission-presets'
-import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-stats'
@@ -19,6 +19,7 @@ import type { SkillRegistry as HarnessSkillRegistry } from '@deepseek-ai/dsh-ski
 import type { Config as OmpTuiConfig } from './config.js'
 import { AgentController } from './runtime/agent-controller.js'
 import { createCordisEventSource } from './runtime/agent-session.js'
+import { executeHarnessCommand } from './runtime/command-execution.js'
 import { installHarnessInteractions, type HarnessInteractionInstallation } from './runtime/harness-interactions.js'
 import { InteractionQueue } from './runtime/interaction-queue.js'
 import { createModelCatalog } from './runtime/model-catalog.js'
@@ -96,6 +97,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     const skills = ctx.get('skills')
     const sessionQuery = ctx.get('sessionQuery')
     const tokenMeter = ctx.get('tokenMeter')
+    const sandboxPolicy = ctx.get('sandboxPolicy')
     const compactionAvailable = ctx.get('compaction') !== undefined
     const cwd = process.cwd()
     interactions = new InteractionQueue()
@@ -105,6 +107,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       compactionAvailable,
       ...(llm === undefined ? {} : { llm }),
       ...(tokenMeter === undefined ? {} : { tokenMeter }),
+      ...(sandboxPolicy === undefined ? {} : { sandboxPolicy }),
     })
     controller = new AgentController({
       agents: ctx.agents,
@@ -183,7 +186,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         const agent = controller?.agent
         return agent === undefined
           ? Promise.resolve(undefined)
-          : commands.execute(agent as Parameters<typeof commands.execute>[0], line, signal)
+          : executeHarnessCommand(commands, agent as Parameters<typeof commands.execute>[0], line, signal)
       },
     }
     const skillRegistry = skills === undefined && presets === undefined ? undefined : {
@@ -225,9 +228,16 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
         cancel: () => {
           controller?.cancel()
         },
-        selectModel: async (provider, model) => {
-          await controller?.selectModel(provider, model)
+        selectModel: async (selection) => {
+          await controller?.selectModel(selection)
         },
+        ...(sandboxPolicy === undefined ? {} : {
+          selectSandboxMode: (mode) => Promise.resolve().then(() => {
+            const session = controller?.agent?.session
+            if (session === undefined) throw new Error('当前 Agent 尚未就绪。')
+            if (sandboxPolicy.resolve({ session }).mode !== mode) setSandboxMode(session, mode)
+          }),
+        }),
         newSession: async () => {
           await controller?.newSession()
           await refreshRecentSessions?.()

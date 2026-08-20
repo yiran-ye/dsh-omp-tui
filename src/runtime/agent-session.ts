@@ -76,7 +76,11 @@ export class AgentSessionBinding {
       }),
     )
 
-    this.store.reset(this.agent.session.events)
+    this.store.reset(this.agent.session.events, {
+      ...(this.agent.session.header.agentPreset === undefined
+        ? {}
+        : { agentPreset: this.agent.session.header.agentPreset }),
+    })
     this.replaying = false
     this.pending.sort((left, right) => left.seq - right.seq)
     this.store.replay(this.pending)

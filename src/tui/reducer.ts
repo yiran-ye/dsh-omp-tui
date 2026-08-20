@@ -25,6 +25,11 @@ function numberField(record: UnknownRecord, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+function booleanField(record: UnknownRecord, key: string): boolean | undefined {
+  const value = record[key]
+  return typeof value === 'boolean' ? value : undefined
+}
+
 function collectContent(content: unknown): { text: string; reasoning: string } {
   if (!Array.isArray(content)) return { text: '', reasoning: '' }
   const text: string[] = []
@@ -311,6 +316,17 @@ export function reduceSessionEvent(current: TuiSnapshot, event: SessionEventLike
       break
     case 'agent-preset/selected':
       if (isRecord(event.data)) snapshot = updateHarness(snapshot, 'agentPreset', stringField(event.data, 'agentPreset'))
+      break
+    case 'plan/mode':
+      if (isRecord(event.data)) {
+        const active = booleanField(event.data, 'active')
+        if (active !== undefined) {
+          snapshot = {
+            ...snapshot,
+            harness: { ...snapshot.harness, collaborationMode: active ? 'plan' : 'normal' },
+          }
+        }
+      }
       break
     case 'session/end-seed':
     case 'request/header':

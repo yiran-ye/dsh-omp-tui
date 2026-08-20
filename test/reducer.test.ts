@@ -238,18 +238,23 @@ describe('Session Event reducer', () => {
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 4, unknownEventCount: 1 })
   })
 
-  it('投影权限、沙箱、审批策略与 Agent Preset', () => {
+  it('投影权限、沙箱、审批策略、Agent Preset 与 Plan Mode', () => {
     const store = new TuiStore([
       event(0, 'permission/preset', { preset: 'workspace-write' }),
       event(1, 'sandbox/mode', { mode: 'workspace-write' }),
       event(2, 'approval/policy', { policy: 'ask' }),
       event(3, 'agent-preset/selected', { agentPreset: 'code' }),
+      event(4, 'plan/mode', { active: true }),
     ])
     expect(store.getSnapshot().harness).toEqual({
       permissionPreset: 'workspace-write',
       sandboxMode: 'workspace-write',
       approvalPolicy: 'ask',
       agentPreset: 'code',
+      collaborationMode: 'plan',
     })
+
+    store.appendEvent(event(5, 'plan/mode', { active: false }))
+    expect(store.getSnapshot().harness.collaborationMode).toBe('normal')
   })
 })

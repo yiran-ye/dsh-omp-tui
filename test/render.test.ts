@@ -13,7 +13,7 @@ import { ToolCard } from '../src/tui/components/tool-card.js'
 import { ToolDetailDialog } from '../src/tui/components/tool-detail-dialog.js'
 import { UserBlock } from '../src/tui/components/user-block.js'
 import { Welcome } from '../src/tui/components/welcome.js'
-import { resolveWorkingActivity } from '../src/tui/components/working-status.js'
+import { formatWorkingElapsed, resolveWorkingActivity } from '../src/tui/components/working-status.js'
 import { HelpDialog } from '../src/tui/components/help-dialog.js'
 import { TuiStore } from '../src/tui/store.js'
 import type { ToolTranscriptEntry } from '../src/tui/state.js'
@@ -224,7 +224,7 @@ describe('OMP 风格渲染', () => {
     app.dispose()
   })
 
-  it('运行时显示当前工具步骤与 Esc 提示，并在无工具时显示思考阶段', () => {
+  it('运行时根据工具与流式内容更新活动文案，并显示 Esc 与计时', () => {
     vi.useFakeTimers()
     const terminal = new MemoryTerminal()
     const tui = new TuiMainScreen(terminal, true)
@@ -245,11 +245,22 @@ describe('OMP 风格渲染', () => {
       const plain = app.render(64).map(stripTerminalSequences).join('\n')
       expect(plain).toContain('查看开发文档启动细节')
       expect(plain).toContain('⟨esc⟩')
+      expect(plain).toContain('· 0s')
       expect(plain).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
 
       vi.advanceTimersByTime(80)
       const nextFrame = app.render(64).map(stripTerminalSequences).join('\n')
       expect(nextFrame).not.toBe(plain)
+
+      vi.advanceTimersByTime(1920)
+      const elapsed = app.render(64).map(stripTerminalSequences).join('\n')
+      expect(elapsed).toContain('· 2s')
+
+      const waitingStore = new TuiStore()
+      waitingStore.setStatus('running')
+      expect(resolveWorkingActivity(waitingStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
+        '正在等待模型响应',
+      )
 
       const thinkingStore = new TuiStore([
         {
@@ -260,7 +271,52 @@ describe('OMP 风格渲染', () => {
         },
       ])
       thinkingStore.setStatus('running')
-      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe('正在思考')
+      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe('正在思考：分析中')
+      thinkingStore.appendEvent({
+        type: 'assistant/chunk',
+        seq: 1,
+        time: 1,
+        data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: '，正在添加计时器' } },
+      })
+      expect(resolveWorkingActivity(thinkingStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
+        '正在思考：分析中，正在添加计时器',
+      )
+
+      const betweenStepsStore = new TuiStore([
+        { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
+        { type: 'step/start', seq: 1, time: 1, data: { turn: 1, step: 1 } },
+        {
+          type: 'assistant/message',
+          seq: 2,
+          time: 2,
+          data: {
+            turn: 1,
+            step: 1,
+            message: { content: [{ type: 'reasoning', text: '已完成第一步，接下来检查测试' }] },
+          },
+        },
+        { type: 'step/end', seq: 3, time: 3, data: { turn: 1, step: 1 } },
+        { type: 'step/start', seq: 4, time: 4, data: { turn: 1, step: 2 } },
+      ])
+      betweenStepsStore.setStatus('running')
+      expect(resolveWorkingActivity(betweenStepsStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
+        '正在思考：已完成第一步，接下来检查测试',
+      )
+
+      const intentStore = new TuiStore([
+        {
+          type: 'tool/call',
+          seq: 0,
+          time: 0,
+          data: {
+            callId: 'intent-call',
+            name: 'read',
+            arguments: '{"path":"src/tui","intent":"检查状态栏刷新逻辑"}',
+          },
+        },
+      ])
+      intentStore.setStatus('running')
+      expect(resolveWorkingActivity(intentStore.getSnapshot(), presenter)).toBe('检查状态栏刷新逻辑')
 
       store.setStatus('idle')
       expect(app.render(64).map(stripTerminalSequences).join('\n')).not.toContain('⟨esc⟩')
@@ -268,6 +324,12 @@ describe('OMP 风格渲染', () => {
       app.dispose()
       vi.useRealTimers()
     }
+  })
+
+  it('工作计时使用紧凑的时分秒格式', () => {
+    expect(formatWorkingElapsed(-1)).toBe('0s')
+    expect(formatWorkingElapsed(61_999)).toBe('1m 01s')
+    expect(formatWorkingElapsed(3_661_000)).toBe('1h 01m 01s')
   })
 
   it('Tool Detail 滚动时复用已展开的内容', () => {
@@ -372,7 +434,7 @@ describe('OMP 风格渲染', () => {
     app.dispose()
   })
 
-  it('Slash 补全菜单会完整显示且可选择第五项', async () => {
+  it('Slash 补全菜单显示首屏命令且可滚动选择末项', async () => {
     const terminal = new MemoryTerminal()
     terminal.columns = 64
     const tui = new TuiMainScreen(terminal, true)
@@ -391,9 +453,9 @@ describe('OMP 风格渲染', () => {
     expect(plain).toContain('skills')
     expect(plain).toContain('mcp')
     expect(plain).toContain('model')
-    expect(plain).toContain('clear')
+    expect(plain).toContain('sandbox')
 
-    for (let index = 0; index < 10; index++) app.prompt.input.handleInput('\u001b[B')
+    for (let index = 0; index < 11; index++) app.prompt.input.handleInput('\u001b[B')
     const selectedPlain = app.render(64).map(stripTerminalSequences).join('\n')
     expect(selectedPlain).toContain('quit')
     app.prompt.input.handleInput('\r')

@@ -14,12 +14,16 @@
 | `@deepseek-ai/cordis` | 4.0.1 |
 | `@earendil-works/pi-tui` | 0.84.2 |
 
-以下实际运行接口包均为 `0.1.0-rc.7`：`dsh-agent`、`dsh-session`、
+项目开发声明使用 `0.1.0-rc.7`：`dsh-agent`、`dsh-session`、
 `dsh-llm`、`dsh-tools`、`dsh-user-approval`、`dsh-user-questions`、
 `dsh-agent-default-model`、`dsh-agent-presets`、`dsh-cmdline`、
 `dsh-commands`、`dsh-compaction`、`dsh-permission-presets`、`dsh-sandbox-policy`、
 `dsh-session-projection`、`dsh-session-query`、`dsh-session-stats`、`dsh-skill` 与
 `dsh-token-meter`。
+
+当前 `dsh@0.1.0-rc.7` 的宽松依赖范围会把部分运行时包解析到 rc.8；本机的
+`dsh-commands` 与 `dsh-plan-mode` 即为 rc.8。rc.8 在 `commands.execute()` 的
+`AbortSignal` 前新增图片参数，TUI 会按运行时方法签名兼容三参数和四参数 ABI。
 
 rc.7 启动器只会向 ID 为 `agent-presets` 的 Cordis entry 注入发行版自带的
 preset roots，因此 Bundle 使用这个 canonical ID。`dsh-base` 本身没有挂载该
@@ -31,7 +35,8 @@ entry，开发 Profile 的最终配置中此 ID 仍然唯一。
   agentOptions: { provider, model, maxTokens? }, setup })`。
 - 恢复：`ctx.agents.resume({ resumeSessionId, agentOptions, setup })`。本项目不以
   相同 ID 新建空 Session。
-- `setup(agentCtx)` 中通过 `installModelSelection(agentCtx, ref)` 安装当前模型；
+- `setup(agentCtx)` 中通过 `installModelSelection(agentCtx, ref)` 安装当前 Provider、Model 与
+  Reasoning Effort 的完整选择；
   新 Session 如有 Preset，则调用 `ctx.agentPresets.mount(agentCtx, id)`。
 - `AgentHandle` 暴露 `agent` 与异步 `dispose()`；`Agent` 状态是 `idle | running`。
 - 用户消息用 `createUserMessage()` 创建。空闲调用 `followup()`，运行中调用
@@ -66,10 +71,14 @@ rc.7 的核心持久事件为：
 - `assistant/message`：包含最终 `AssistantMessage`
 - `tool/call` 与 `tool/result`，以 `callId` 配对
 
-权限/Preset 扩展事件为 `permission/preset`、`sandbox/mode`、
-`approval/policy`、`agent-preset/selected`。每个事件带单调递增 `seq`；UI
+权限/Preset/协作模式扩展事件为 `permission/preset`、`sandbox/mode`、
+`approval/policy`、`agent-preset/selected`、`plan/mode`。每个事件带单调递增 `seq`；UI
 按 `event.seq <= lastSeq` 去重。Agent 的易失事件是 `agent/status` 以及
 `agent/inbox/inserted|claimed|discarded`。
+
+Sandbox Mode 的运行时切换使用 `@deepseek-ai/dsh-sandbox-policy` 导出的
+`setSandboxMode(session, mode)`，不直接构造事件；封闭模式为 `read-only`、
+`workspace-write` 与 `danger-full-access`。
 
 ## Approval 与 User Questions
 
@@ -105,8 +114,9 @@ Overlay API 构成界面。
 不使用 Bun-only 的 `@oh-my-pi/pi-tui`。
 
 终端颜色由 `getCapabilities().trueColor` 和 `TERM` 共同选择 True Color、ANSI 256 或
-ANSI 16。除 OMP 风格 StatusLine 的模型、目录、Git、上下文图标外，布局使用普通 Unicode；
-状态栏需要 Nerd Font。当前仅提供深色语义主题；静态 Logo 渐变不会启动定时器或动画。
+ANSI 16。OMP 风格 StatusLine 中的模式、模型、推理强度、有效沙箱权限、目录、Git、上下文与压缩能力
+使用 Nerd Font 图标，其余布局使用普通 Unicode。
+当前仅提供深色语义主题；静态 Logo 渐变不会启动定时器或动画。
 
 ## 调研来源
 

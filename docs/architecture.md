@@ -58,7 +58,8 @@ Slash 命令发现由 `ctx.commands.list(agent)` 提供。OMP TUI 将官方目�
 新 Session 与 Agent Preset 重组都会刷新目录。`/skills` 打开选择目录，选择后仅预填 Skill
 手势；已解析的官方命令通过 `ctx.commands.execute()` 执行，执行结果仅显示为 UI notice，
 不进入模型上下文；未注册的 Slash 输入仍作为普通 Agent 消息发送，以保留 Skill 手势等模型
-侧扩展入口。
+侧扩展入口。命令适配层同时兼容 rc.7 的 `(agent, line, signal)` 与 rc.8 的
+`(agent, line, images, signal)` 签名；当前 TUI 尚无图片 composer，因此向 rc.8 明确传入空图片列表。
 
 MCP 没有独立的 Harness 服务面：`@deepseek-ai/dsh-mcp-client` 发现 Server 工具后，会把它们
 注册到 `ctx.tools`，名称为 `mcp__<server>__<tool>`。`/mcp` 从当前 Agent 可见的
@@ -66,9 +67,15 @@ MCP 没有独立的 Harness 服务面：`@deepseek-ai/dsh-mcp-client` 发现 Ser
 不会越过 Agent 直接发起 MCP 调用。
 
 `/model` 读取已注册 Provider 的 advisory 模型目录；某个 Provider 读取失败不会隐藏其他
-Provider 的模型。选择项直接更新当前 Agent 持有的 `ModelSelectionRef.current`，由 Harness 在
-下一次 prompt assembly 时快照，因此不会拆分正在进行中的模型请求。选择同时成为本进程后续
+Provider 的模型。模型确认后再通过 `resolveModelInfo()` 读取该精确路由公布的思考等级，最终将
+Provider、Model 与 Reasoning Effort 作为一个 `ModelSelection` 更新当前 Agent 持有的
+`ModelSelectionRef.current`。`Ctrl+R` 使用同一份精确模型元数据循环等级。Harness 在下一次
+prompt assembly 时快照完整选择，因此不会拆分正在进行中的模型请求。选择同时成为本进程后续
 新 Session 的默认值，并在可用时通过 `agentDefaultModel.saveSelection()` 持久化。
+
+`/sandbox` 将三种封闭模式作为本地目录公开，也接受完整模式 ID 参数。写入只调用
+`setSandboxMode(session, mode)`，由 Session 同步发布唯一的 `sandbox/mode` 事件；执行策略、
+持久化和状态栏都消费同一事件日志，不维护第二份权限状态。
 
 ## Agent 生命周期
 
@@ -111,5 +118,8 @@ protocol，恢复 raw mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIG
 
 主题使用语义色角色而不是组件内硬编码 ANSI：True Color 不可用时依次降级到 ANSI
 256 与 ANSI 16。欢迎页渐变是纯渲染函数，不创建动画或计时器；StatusLine 作为输入框
-上边框内容按宽度逐级省略，只渲染真实存在的 Harness 状态。状态栏采用 OMP 的 Nerd Font
-图标（模型、推理强度、目录、Git、上下文与压缩能力）；终端应配置兼容字体以获得完整图形。
+上边框内容按宽度逐级省略。Agent Preset 从 Session Header 初始化，并由后续选择事件覆盖；
+`plan/mode` 的 `active` 布尔值投影为 Plan/Normal；未显式选择推理强度时使用模型适配器公布的具体默认值。文件权限
+优先来自当前 Session 的 `sandboxPolicy.resolve()` 有效模式，并以 `sandbox/mode` 投影降级；状态栏
+将三种模式显示为 Read Only、Write 与 Full Access。状态栏采用 OMP 的 Nerd Font 图标（模式、模型、
+推理强度、权限、目录、Git、上下文与压缩能力）；终端应配置兼容字体以获得完整图形。

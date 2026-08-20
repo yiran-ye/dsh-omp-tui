@@ -1,8 +1,9 @@
-import type { AgentStatus } from '@deepseek-ai/dsh-agent'
+import type { AgentStatus, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { reduceSessionEvent } from './reducer.js'
 import {
   createInitialSnapshot,
   type CapabilityState,
+  type HarnessStateSnapshot,
   type OverlayState,
   type RecentSessionsState,
   type SessionEventLike,
@@ -33,11 +34,15 @@ export class TuiStore {
     return () => this.listeners.delete(listener)
   }
 
-  reset(events: readonly SessionEventLike[] = []): void {
+  reset(
+    events: readonly SessionEventLike[] = [],
+    harness: HarnessStateSnapshot = {},
+  ): void {
     const initial = createInitialSnapshot()
     this.snapshot = {
       ...initial,
       capabilities: this.snapshot.capabilities,
+      harness: { ...harness },
       notice: this.snapshot.notice,
       recentSessions: this.snapshot.recentSessions,
       reasoningVisible: this.snapshot.reasoningVisible,
@@ -71,8 +76,13 @@ export class TuiStore {
     this.patch({ inboxCount: Math.max(0, Math.floor(inboxCount)) })
   }
 
-  setSession(sessionId: string, provider: string | undefined, model: string | undefined): void {
-    this.patch({ sessionId, provider, model })
+  setSession(
+    sessionId: string,
+    provider: string | undefined,
+    model: string | undefined,
+    reasoningEffort?: ModelSelection['reasoningEffort'],
+  ): void {
+    this.patch({ sessionId, provider, model, reasoningEffort })
   }
 
   setStatusLine(statusLine: StatusLineState): void {

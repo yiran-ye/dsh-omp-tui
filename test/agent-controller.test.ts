@@ -14,6 +14,8 @@ import type { RuntimeAgent, RuntimeEventSource } from '../src/runtime/agent-sess
 import type { StatusLineRuntimePort } from '../src/runtime/status-line-runtime.js'
 import type { SessionEventLike } from '../src/tui/state.js'
 
+const HIGH_EFFORT = 'high' as NonNullable<ModelSelection['reasoningEffort']>
+
 class NoopEvents implements RuntimeEventSource {
   onSessionEvent(_listener: (session: Session, event: SessionEventLike) => void): () => void {
     return () => undefined
@@ -153,10 +155,18 @@ describe('AgentController', () => {
     const { controller, created, saveSelection } = harness()
     await controller.start()
 
-    await controller.selectModel('openai', 'gpt-5.4')
+    await controller.selectModel({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: HIGH_EFFORT })
 
-    expect(controller.store.getSnapshot()).toMatchObject({ provider: 'openai', model: 'gpt-5.4' })
-    expect(saveSelection).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-5.4' })
+    expect(controller.store.getSnapshot()).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+    })
+    expect(saveSelection).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+    })
     expect(controller.store.getSnapshot().notice).toBeUndefined()
 
     await controller.newSession()
@@ -185,8 +195,12 @@ describe('AgentController', () => {
     })
     expect(syncContext).toHaveBeenCalledOnce()
 
-    await controller.selectModel('openai', 'gpt-5.6-luna')
-    expect(setSelection).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-5.6-luna' })
+    await controller.selectModel({ provider: 'openai', model: 'gpt-5.6-luna', reasoningEffort: HIGH_EFFORT })
+    expect(setSelection).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'gpt-5.6-luna',
+      reasoningEffort: 'high',
+    })
 
     await controller.shutdown()
     expect(detachSession).toHaveBeenCalledWith(agent.session)

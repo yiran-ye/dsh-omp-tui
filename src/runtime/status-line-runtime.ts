@@ -16,6 +16,10 @@ export interface TokenMeterPort {
   measure(session: Session): { readonly totalTokens: number }
 }
 
+export interface SandboxPolicyPort {
+  resolve(request?: { readonly session?: Session }): { readonly mode: string }
+}
+
 export interface GitBranchPort {
   resolve(cwd: string, signal: AbortSignal): Promise<string | undefined>
 }
@@ -25,6 +29,7 @@ export interface StatusLineRuntimeOptions {
   readonly compactionAvailable: boolean
   readonly llm?: ModelInfoPort
   readonly tokenMeter?: TokenMeterPort
+  readonly sandboxPolicy?: SandboxPolicyPort
   readonly git?: GitBranchPort
   readonly gitRefreshIntervalMs?: number
 }
@@ -58,6 +63,7 @@ function sameStatusLine(left: StatusLineState | undefined, right: StatusLineStat
   return left?.cwd === right.cwd
     && left?.modelName === right.modelName
     && left?.reasoningEffort === right.reasoningEffort
+    && left?.sandboxMode === right.sandboxMode
     && left?.gitBranch === right.gitBranch
     && left?.contextTokens === right.contextTokens
     && left?.contextWindow === right.contextWindow
@@ -88,6 +94,17 @@ function runGit(cwd: string, args: readonly string[], signal: AbortSignal): Prom
   })
 }
 
+function sandboxMode(value: string | undefined): StatusLineState['sandboxMode'] {
+  switch (value) {
+    case 'read-only':
+    case 'workspace-write':
+    case 'danger-full-access':
+      return value
+    default:
+      return undefined
+  }
+}
+
 export const defaultGitBranchPort: GitBranchPort = {
   async resolve(cwd, signal) {
     const branch = await runGit(cwd, ['--no-optional-locks', 'symbolic-ref', '--quiet', '--short', 'HEAD'], signal)
@@ -107,6 +124,7 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
   private session: Session | undefined
   private modelName: string | undefined
   private reasoningEffort: string | undefined
+  private sandboxMode: StatusLineState['sandboxMode']
   private contextTokens: number | undefined
   private contextWindow: number | undefined
   private gitBranch: string | undefined
@@ -122,6 +140,7 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
     private readonly store: TuiStore,
     private readonly options: StatusLineRuntimeOptions,
   ) {
+    this.syncSandboxMode()
     this.publish()
     this.refreshGitBranch()
     const intervalMs = Math.max(250, options.gitRefreshIntervalMs ?? GIT_REFRESH_INTERVAL_MS)
@@ -139,13 +158,14 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
     if (this.session !== session) return
     this.session = undefined
     this.contextTokens = undefined
+    this.syncSandboxMode()
     this.publish()
   }
 
   setSelection(selection: ModelSelection): void {
     if (this.disposed) return
     this.modelName = cleanLabel(selection.model) ?? selection.model
-    this.reasoningEffort = cleanLabel(selection.reasoningEffort)
+    this.reasoningEffort = cleanLabel(selection.reasoningEffort)?.toLowerCase()
     this.contextWindow = undefined
     this.publish()
     this.resolveModelInfo(selection)
@@ -153,13 +173,15 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
 
   syncContext(): void {
     if (this.disposed) return
+    this.syncSandboxMode()
     const session = this.session
     const meter = this.options.tokenMeter
-    if (session === undefined || meter === undefined) return
-    try {
-      this.contextTokens = finiteTokenCount(meter.measure(session).totalTokens)
-    } catch {
-      this.contextTokens = undefined
+    if (session !== undefined && meter !== undefined) {
+      try {
+        this.contextTokens = finiteTokenCount(meter.measure(session).totalTokens)
+      } catch {
+        this.contextTokens = undefined
+      }
     }
     this.publish()
   }
@@ -197,11 +219,24 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
     if (this.disposed || request.signal.aborted || revision !== this.modelRevision) return
     this.modelName = cleanLabel(info.name) ?? cleanLabel(selection.model) ?? selection.model
     this.contextWindow = finitePositive(info.context?.contextWindow)
-    const effort = selection.reasoningEffort === undefined
-      ? undefined
-      : info.reasoning?.efforts.find((candidate) => candidate.id === selection.reasoningEffort)?.name
-    this.reasoningEffort = cleanLabel(effort) ?? cleanLabel(selection.reasoningEffort)
+    const effort = selection.reasoningEffort ?? info.reasoning?.defaultEffort
+    this.reasoningEffort = cleanLabel(effort)?.toLowerCase()
     this.publish()
+  }
+
+  private syncSandboxMode(): void {
+    const sessionMode = this.store.getSnapshot().harness.sandboxMode
+    const policy = this.options.sandboxPolicy
+    if (policy === undefined) {
+      this.sandboxMode = sandboxMode(sessionMode)
+      return
+    }
+    try {
+      const request = this.session === undefined ? undefined : { session: this.session }
+      this.sandboxMode = sandboxMode(policy.resolve(request).mode) ?? sandboxMode(sessionMode)
+    } catch {
+      this.sandboxMode = sandboxMode(sessionMode)
+    }
   }
 
   private refreshGitBranch(): void {
@@ -232,6 +267,7 @@ export class StatusLineRuntime implements StatusLineRuntimePort {
       ...(cleanLabel(this.options.cwd) === undefined ? {} : { cwd: this.options.cwd }),
       ...(this.modelName === undefined ? {} : { modelName: this.modelName }),
       ...(this.reasoningEffort === undefined ? {} : { reasoningEffort: this.reasoningEffort }),
+      ...(this.sandboxMode === undefined ? {} : { sandboxMode: this.sandboxMode }),
       ...(this.gitBranch === undefined ? {} : { gitBranch: this.gitBranch }),
       ...(this.contextTokens === undefined ? {} : { contextTokens: this.contextTokens }),
       ...(this.contextWindow === undefined ? {} : { contextWindow: this.contextWindow }),

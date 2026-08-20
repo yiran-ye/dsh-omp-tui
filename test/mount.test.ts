@@ -1,6 +1,9 @@
 import { stripTerminalSequences, type Terminal } from '@earendil-works/pi-tui'
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
 import { mountTui } from '../src/tui/mount.js'
+import type { SandboxMode } from '../src/tui/state.js'
 import { TuiStore } from '../src/tui/store.js'
 
 class MemoryTerminal implements Terminal {
@@ -143,6 +146,48 @@ describe('备用屏挂载', () => {
     mounted.stop()
   })
 
+  it('通过 Ctrl+R 循环当前模型公布的思考等级', async () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore()
+    store.setSession('session-effort', 'openai', 'gpt-5.6-luna')
+    store.setStatusLine({ reasoningEffort: 'high', compactionAvailable: false })
+    const selectModel = vi.fn(async (_selection: ModelSelection) => undefined)
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+      models: {
+        list: async () => ({ models: [], failures: [] }),
+        resolveReasoning: async () => ({
+          efforts: [
+            { id: ReasoningEffortId('low'), name: 'low' },
+            { id: ReasoningEffortId('high'), name: 'high' },
+            { id: ReasoningEffortId('max'), name: 'max' },
+          ],
+          defaultEffort: ReasoningEffortId('high'),
+        }),
+      },
+    })
+
+    terminal.input('\u0012')
+    await settle()
+
+    expect(selectModel).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'gpt-5.6-luna',
+      reasoningEffort: 'max',
+    })
+    expect(store.getSnapshot().notice).toBe('思考等级已切换为 max。')
+    mounted.stop()
+  })
+
   it('用户下一次按键会立即清除通知', () => {
     const terminal = new MemoryTerminal()
     const store = new TuiStore()
@@ -170,6 +215,48 @@ describe('备用屏挂载', () => {
 })
 
 describe('Slash Command 分派', () => {
+  it('通过 Shift+Tab 在 Normal 与 Plan 之间切换', async () => {
+    const terminal = new MemoryTerminal()
+    const store = new TuiStore()
+    let seq = 0
+    const execute = vi.fn(async (line: string) => {
+      store.appendEvent({
+        type: 'plan/mode',
+        seq: seq++,
+        time: seq,
+        data: { active: line !== '/plan off' },
+      })
+      return { result: { kind: 'success' as const } }
+    })
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+      commands: {
+        list: () => [{ name: 'plan', description: 'Enter or leave plan mode' }],
+        execute,
+      },
+    })
+
+    terminal.input('\u001b[Z')
+    await settle()
+    expect(execute).toHaveBeenLastCalledWith('/plan', expect.any(AbortSignal))
+    expect(store.getSnapshot().harness.collaborationMode).toBe('plan')
+
+    terminal.input('\u001b[Z')
+    await settle()
+    expect(execute).toHaveBeenLastCalledWith('/plan off', expect.any(AbortSignal))
+    expect(store.getSnapshot().harness.collaborationMode).toBe('normal')
+    mounted.stop()
+  })
+
   it('动态列出并执行 Harness 注册命令', async () => {
     const store = new TuiStore()
     const send = vi.fn<(text: string) => void>()
@@ -287,11 +374,62 @@ describe('Slash Command 分派', () => {
     mounted.stop()
   })
 
-  it('通过 /model 显示模型目录并提交选择', async () => {
+  it('通过 /sandbox 选择或直接切换当前 Session 的 Sandbox Mode', async () => {
+    const store = new TuiStore()
+    store.setSession('session-sandbox', 'openai', 'gpt-5.6-luna')
+    store.setStatusLine({ sandboxMode: 'workspace-write', compactionAvailable: false })
+    const terminal = new MemoryTerminal()
+    const selectSandboxMode = vi.fn(async (mode: SandboxMode) => {
+      store.setStatusLine({ ...store.getSnapshot().statusLine, sandboxMode: mode })
+    })
+    const mounted = mountTui({
+      store,
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        selectSandboxMode,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    mounted.app.prompt.input.onSubmit?.('/sandbox workspace-write')
+    expect(selectSandboxMode).not.toHaveBeenCalled()
+    expect(store.getSnapshot().notice).toBe('当前 Sandbox Mode 已是 Write。')
+
+    mounted.app.prompt.input.onSubmit?.('/sandbox')
+    const overlay = store.getSnapshot().overlay
+    expect(overlay).toMatchObject({ kind: 'catalog', title: 'Sandbox Mode', selected: 1 })
+    if (overlay.kind !== 'catalog') throw new Error('expected sandbox catalog')
+    expect(overlay.items.map((item) => item.label)).toEqual([
+      'Read Only · read-only',
+      '✓ Write · workspace-write',
+      'Full Access · danger-full-access',
+    ])
+
+    terminal.input('\u001b[B')
+    terminal.input('\r')
+    await settle()
+    expect(selectSandboxMode).toHaveBeenLastCalledWith('danger-full-access')
+    expect(store.getSnapshot().notice).toBe('Sandbox Mode 已切换为 Full Access。')
+
+    mounted.app.prompt.input.onSubmit?.('/sandbox read-only')
+    await settle()
+    expect(selectSandboxMode).toHaveBeenLastCalledWith('read-only')
+
+    mounted.app.prompt.input.onSubmit?.('/sandbox unrestricted')
+    expect(store.getSnapshot().notice).toBe('用法：/sandbox [read-only|workspace-write|danger-full-access]')
+    mounted.stop()
+  })
+
+  it('通过 /model 依次选择模型与该模型公布的思考等级', async () => {
     const store = new TuiStore()
     store.setSession('session-model', 'deepseek', 'deepseek-chat')
     const terminal = new MemoryTerminal()
-    const selectModel = vi.fn(async (_provider: string, _model: string) => undefined)
+    const selectModel = vi.fn(async (_selection: ModelSelection) => undefined)
     const mounted = mountTui({
       store,
       terminal,
@@ -322,6 +460,14 @@ describe('Slash Command 分派', () => {
           ],
           failures: [],
         }),
+        resolveReasoning: async (provider, model) => provider === 'openai' && model === 'gpt-5.4'
+          ? {
+              efforts: [
+                { id: ReasoningEffortId('low'), name: 'low' },
+                { id: ReasoningEffortId('high'), name: 'high' },
+              ],
+            }
+          : undefined,
       },
     })
 
@@ -335,7 +481,21 @@ describe('Slash Command 分派', () => {
     terminal.input('\u001b[A')
     terminal.input('\r')
     await settle()
-    expect(selectModel).toHaveBeenCalledWith('openai', 'gpt-5.4')
+    const effortOverlay = store.getSnapshot().overlay
+    expect(effortOverlay).toMatchObject({ kind: 'catalog', title: '思考等级' })
+    if (effortOverlay.kind !== 'catalog') throw new Error('expected reasoning catalog')
+    expect(effortOverlay.body).toContain('GPT-5.4（openai/gpt-5.4）')
+    expect(effortOverlay.items.map((item) => item.label)).toEqual(['✓ Default', 'low', 'high'])
+
+    terminal.input('\u001b[B')
+    terminal.input('\u001b[B')
+    terminal.input('\r')
+    await settle()
+    expect(selectModel).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+    })
     mounted.stop()
   })
 })

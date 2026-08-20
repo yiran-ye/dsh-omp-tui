@@ -113,32 +113,35 @@ export class AgentController {
     if (agent?.status === 'running') agent.cancel({ kind: 'user' })
   }
 
-  selectModel(provider: string, model: string): Promise<void> {
+  selectModel(selection: ModelSelection): Promise<void> {
     return this.serializeLifecycle(async () => {
       this.assertOpen()
-      if (provider.length === 0 || model.length === 0) throw new Error('Provider 和模型不能为空。')
+      if (selection.provider.length === 0 || selection.model.length === 0) {
+        throw new Error('Provider 和模型不能为空。')
+      }
+      if (selection.reasoningEffort?.length === 0) {
+        throw new Error('思考等级不能为空。')
+      }
       const handle = this.handle
       const selectionRef = this.modelSelection
       if (handle === undefined || selectionRef === undefined) {
         throw new Error('Agent Controller 尚未启动。')
       }
-      const current = selectionRef.current
-      const selection: ModelSelection = current?.provider === provider && current.model === model
-        ? {
-            provider: current.provider,
-            model: current.model,
-            ...(current.reasoningEffort === undefined ? {} : { reasoningEffort: current.reasoningEffort }),
-          }
-        : { provider, model }
-      selectionRef.current = selection
-      this.selectedModelOverride = selection
-      this.store.setSession(handle.agent.id, selection.provider, selection.model)
-      this.options.statusLine?.setSelection(selection)
+      const next: ModelSelection = {
+        provider: selection.provider,
+        model: selection.model,
+        ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
+      }
+      selectionRef.current = next
+      this.selectedModelOverride = next
+      this.store.setSession(handle.agent.id, next.provider, next.model, next.reasoningEffort)
+      this.options.statusLine?.setSelection(next)
       try {
-        await this.options.defaultModel.saveSelection?.(selection)
+        await this.options.defaultModel.saveSelection?.(next)
       } catch (error) {
+        const effort = next.reasoningEffort === undefined ? '' : `（${next.reasoningEffort}）`
         this.store.setNotice(
-          `已切换模型为 ${provider}/${model}；无法保存为默认模型：${error instanceof Error ? error.message : String(error)}`,
+          `已切换模型为 ${next.provider}/${next.model}${effort}；无法保存为默认模型：${error instanceof Error ? error.message : String(error)}`,
         )
       }
     })
@@ -224,7 +227,7 @@ export class AgentController {
       this.options.eventSource,
       () => this.options.statusLine?.syncContext(),
     )
-    this.store.setSession(handle.agent.id, selection.provider, selection.model)
+    this.store.setSession(handle.agent.id, selection.provider, selection.model, selection.reasoningEffort)
     this.options.statusLine?.setSession(handle.agent.session, selection)
     return handle.agent
   }

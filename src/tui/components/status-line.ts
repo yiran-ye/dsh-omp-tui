@@ -7,14 +7,58 @@ import { fitLine } from './common.js'
 
 interface RenderOptions {
   readonly abbreviatedPath: boolean
+  readonly showPreset: boolean
+  readonly showCollaborationMode: boolean
   readonly showPath: boolean
   readonly showReasoningEffort: boolean
+  readonly showPermission: boolean
   readonly showGit: boolean
   readonly showContext: boolean
   readonly showCompaction: boolean
 }
 
 const SEPARATOR = '  '
+
+const PRESET_LABELS: Readonly<Record<string, string>> = {
+  standard: 'Standard',
+  code: 'PTC',
+  minimal: 'Minimal',
+  cordis: 'Creator',
+}
+
+const REASONING_LABELS: Readonly<Record<string, string>> = {
+  none: 'None',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'XHigh',
+  max: 'Max',
+}
+
+function presetLabel(agentPreset: string): string | undefined {
+  const preset = agentPreset.trim()
+  if (preset.length === 0) return undefined
+  return PRESET_LABELS[preset] ?? preset
+}
+
+function reasoningLabel(reasoningEffort: string): string {
+  const effort = reasoningEffort.trim()
+  return REASONING_LABELS[effort.toLowerCase()] ?? effort
+}
+
+function permissionLabel(mode: string | undefined): string | undefined {
+  switch (mode) {
+    case 'read-only':
+      return theme.muted(' Read Only')
+    case 'workspace-write':
+      return theme.warning(' Write')
+    case 'danger-full-access':
+      return theme.error(' Full Access')
+    default:
+      return undefined
+  }
+}
 
 function compactNumber(value: number): string {
   const units: readonly [number, string][] = [[1_000_000_000, 'B'], [1_000_000, 'M'], [1_000, 'K']]
@@ -79,8 +123,11 @@ export class StatusLine implements Component {
     const pathWidth = Math.max(8, Math.min(28, Math.floor(safeWidth / 3)))
     const modelOnly: RenderOptions = {
       abbreviatedPath: true,
+      showPreset: false,
+      showCollaborationMode: false,
       showPath: false,
       showReasoningEffort: false,
+      showPermission: false,
       showGit: false,
       showContext: false,
       showCompaction: false,
@@ -88,50 +135,90 @@ export class StatusLine implements Component {
     const candidates: readonly RenderOptions[] = [
       {
         abbreviatedPath: false,
+        showPreset: true,
+        showCollaborationMode: true,
         showPath: true,
         showReasoningEffort: true,
+        showPermission: true,
         showGit: true,
         showContext: true,
         showCompaction: true,
       },
       {
         abbreviatedPath: true,
+        showPreset: true,
+        showCollaborationMode: true,
         showPath: true,
         showReasoningEffort: true,
+        showPermission: true,
         showGit: true,
         showContext: true,
         showCompaction: true,
       },
       {
         abbreviatedPath: true,
+        showPreset: true,
+        showCollaborationMode: true,
         showPath: true,
-        showReasoningEffort: false,
-        showGit: true,
-        showContext: true,
-        showCompaction: true,
-      },
-      {
-        abbreviatedPath: true,
-        showPath: true,
-        showReasoningEffort: false,
+        showReasoningEffort: true,
+        showPermission: true,
         showGit: false,
         showContext: true,
         showCompaction: true,
       },
       {
         abbreviatedPath: true,
+        showPreset: true,
+        showCollaborationMode: true,
         showPath: false,
-        showReasoningEffort: false,
+        showReasoningEffort: true,
+        showPermission: true,
         showGit: false,
         showContext: true,
         showCompaction: true,
       },
       {
         abbreviatedPath: true,
+        showPreset: true,
+        showCollaborationMode: true,
         showPath: false,
-        showReasoningEffort: false,
+        showReasoningEffort: true,
+        showPermission: true,
         showGit: false,
         showContext: true,
+        showCompaction: false,
+      },
+      {
+        abbreviatedPath: true,
+        showPreset: true,
+        showCollaborationMode: true,
+        showPath: false,
+        showReasoningEffort: true,
+        showPermission: true,
+        showGit: false,
+        showContext: false,
+        showCompaction: false,
+      },
+      {
+        abbreviatedPath: true,
+        showPreset: false,
+        showCollaborationMode: true,
+        showPath: false,
+        showReasoningEffort: true,
+        showPermission: true,
+        showGit: false,
+        showContext: false,
+        showCompaction: false,
+      },
+      {
+        abbreviatedPath: true,
+        showPreset: false,
+        showCollaborationMode: false,
+        showPath: false,
+        showReasoningEffort: true,
+        showPermission: true,
+        showGit: false,
+        showContext: false,
         showCompaction: false,
       },
       modelOnly,
@@ -149,11 +236,25 @@ export class StatusLine implements Component {
     pathWidth: number,
     options: RenderOptions,
   ): readonly string[] {
+    const presetName = !options.showPreset || this.snapshot.harness.agentPreset === undefined
+      ? undefined
+      : presetLabel(this.snapshot.harness.agentPreset)
+    const preset = presetName === undefined
+      ? undefined
+      : `${theme.accent('󰒓')} ${theme.text(presetName)}`
+    const collaborationMode = !options.showCollaborationMode
+      ? undefined
+      : this.snapshot.harness.collaborationMode === 'plan'
+        ? theme.warning('Plan')
+        : theme.muted('Normal')
     const modelName = statusLine.modelName ?? this.snapshot.model ?? '未知模型'
     const effort = options.showReasoningEffort ? statusLine.reasoningEffort : undefined
+    const permission = options.showPermission
+      ? permissionLabel(this.snapshot.harness.sandboxMode) ?? permissionLabel(statusLine.sandboxMode)
+      : undefined
     const model = [
       `${theme.accent('')} ${theme.text(modelName)}`,
-      ...(effort === undefined ? [] : [`${theme.muted('·')} ${theme.warning(` ${effort}`)}`]),
+      ...(effort === undefined ? [] : [`${theme.muted('·')} ${theme.warning(` ${reasoningLabel(effort)}`)}`]),
     ].join(' ')
     const path = !options.showPath || cwd === undefined
       ? undefined
@@ -167,6 +268,7 @@ export class StatusLine implements Component {
           `${theme.muted('')} ${theme.muted(contextText(statusLine))}`,
           ...(options.showCompaction && statusLine.compactionAvailable ? [theme.accent('󰁨')] : []),
         ].join(' ')
-    return [model, path, git, context].filter((segment): segment is string => segment !== undefined)
+    return [preset, collaborationMode, permission, model, path, git, context]
+      .filter((segment): segment is string => segment !== undefined)
   }
 }

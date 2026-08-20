@@ -1,6 +1,12 @@
 import { isKeyRelease, parseKey, ProcessTerminal, TuiAltScreen, type OverlayHandle, type Terminal } from '@earendil-works/pi-tui'
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { InteractionQueue } from '../runtime/interaction-queue.js'
-import type { ModelCatalogItem, ModelCatalogPort } from '../runtime/model-catalog.js'
+import type {
+  ModelCatalogItem,
+  ModelCatalogPort,
+  ModelReasoning,
+  ModelReasoningEffort,
+} from '../runtime/model-catalog.js'
 import type { ToolLookup } from '../runtime/tool-presentation.js'
 import { ToolPresenter } from '../runtime/tool-presentation.js'
 import { TerminalRestore, assertInteractiveTerminal } from '../runtime/terminal-restore.js'
@@ -23,13 +29,48 @@ import { HelpDialog } from './components/help-dialog.js'
 import { QuestionDialog } from './components/question-dialog.js'
 import { BoundToolDetailDialog } from './components/tool-detail-dialog.js'
 import { TranscriptScrollView } from './components/transcript-scroll-view.js'
-import type { CatalogOverlayItem } from './state.js'
+import type { CatalogOverlayItem, SandboxMode } from './state.js'
 import { theme } from './theme.js'
+
+const SANDBOX_MODE_OPTIONS = [
+  {
+    mode: 'read-only',
+    label: 'Read Only',
+    description: '仅允许读取；受 DSH 文件沙箱约束的操作不能修改文件。',
+  },
+  {
+    mode: 'workspace-write',
+    label: 'Write',
+    description: '允许写入当前 Session 的工作区及平台临时目录。',
+  },
+  {
+    mode: 'danger-full-access',
+    label: 'Full Access',
+    description: 'DSH 文件沙箱不限制文件修改范围。',
+  },
+] as const satisfies readonly {
+  readonly mode: SandboxMode
+  readonly label: string
+  readonly description: string
+}[]
+
+function isSandboxMode(value: string | undefined): value is SandboxMode {
+  return SANDBOX_MODE_OPTIONS.some((option) => option.mode === value)
+}
+
+function sandboxModeArgument(text: string): SandboxMode | null | undefined {
+  const [, ...args] = text.trim().toLowerCase().split(/\s+/)
+  if (args.length === 0) return undefined
+  if (args.length !== 1) return null
+  const mode = args[0]
+  return isSandboxMode(mode) ? mode : null
+}
 
 export interface TuiActions {
   send(text: string): void
   cancel(): void
-  selectModel(provider: string, model: string): Promise<void>
+  selectModel(selection: ModelSelection): Promise<void>
+  selectSandboxMode?(mode: SandboxMode): Promise<void>
   newSession(): Promise<void>
   shutdown(): Promise<void>
 }
@@ -66,6 +107,7 @@ export function mountTui(options: MountOptions): MountedTui {
   let activeSkillAutocomplete: AbortController | undefined
   let activeSkillPicker: AbortController | undefined
   let activeModelPicker: AbortController | undefined
+  let activeReasoningRequest: AbortController | undefined
   let catalogSelection: ((value: string) => void) | undefined
   let catalogId = 0
   let slashCommandsRevision = 0
@@ -220,6 +262,131 @@ export function mountTui(options: MountOptions): MountedTui {
       },
     )
   }
+  const currentSandboxMode = (): SandboxMode | undefined => {
+    const snapshot = options.store.getSnapshot()
+    const mode = snapshot.statusLine.sandboxMode ?? snapshot.harness.sandboxMode
+    return isSandboxMode(mode) ? mode : undefined
+  }
+  const applySandboxMode = (mode: SandboxMode): void => {
+    if (options.actions.selectSandboxMode === undefined) {
+      options.store.setNotice('Sandbox Policy 服务未挂载。')
+      return
+    }
+    const option = SANDBOX_MODE_OPTIONS.find((candidate) => candidate.mode === mode)
+    if (currentSandboxMode() === mode) {
+      options.store.setNotice(`当前 Sandbox Mode 已是 ${option?.label ?? mode}。`)
+      return
+    }
+    runAction(options.actions.selectSandboxMode(mode), '切换 Sandbox Mode', () => {
+      options.store.setNotice(`Sandbox Mode 已切换为 ${option?.label ?? mode}。`)
+    })
+  }
+  const openSandboxModes = (): void => {
+    if (options.actions.selectSandboxMode === undefined) {
+      options.store.setNotice('Sandbox Policy 服务未挂载。')
+      return
+    }
+    const current = currentSandboxMode()
+    const currentOption = SANDBOX_MODE_OPTIONS.find((option) => option.mode === current)
+    const selected = Math.max(0, SANDBOX_MODE_OPTIONS.findIndex((option) => option.mode === current))
+    openCatalog(
+      'Sandbox Mode',
+      `当前模式：${currentOption?.label ?? current ?? '未知'}\n选择后将在当前 Session 的下一次受沙箱约束调用生效。`,
+      SANDBOX_MODE_OPTIONS.map((option) => ({
+        value: option.mode,
+        label: `${option.mode === current ? '✓ ' : ''}${option.label} · ${option.mode}`,
+        description: option.description,
+      })),
+      (value) => {
+        if (!isSandboxMode(value)) {
+          options.store.setNotice('Sandbox Mode 目录已更新，请重新打开 /sandbox。')
+          return
+        }
+        applySandboxMode(value)
+      },
+      selected,
+    )
+  }
+  const reasoningChoices = (reasoning: ModelReasoning): readonly {
+    readonly effort?: NonNullable<ModelSelection['reasoningEffort']>
+    readonly label: string
+    readonly description?: string
+  }[] => [
+    ...(reasoning.defaultEffort === undefined ? [{ label: 'Default' }] : []),
+    ...reasoning.efforts.map((effort: ModelReasoningEffort) => ({
+      effort: effort.id,
+      label: effort.name === effort.id ? effort.id : `${effort.name} · ${effort.id}`,
+      ...(effort.description === undefined ? {} : { description: effort.description }),
+    })),
+  ]
+  const applyModelSelection = (
+    model: ModelCatalogItem,
+    reasoningEffort?: NonNullable<ModelSelection['reasoningEffort']>,
+  ): void => {
+    runAction(options.actions.selectModel({
+      provider: model.provider,
+      model: model.model,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    }), '切换模型')
+  }
+  const openModelReasoning = (model: ModelCatalogItem): void => {
+    const registry = options.models
+    if (registry === undefined) {
+      options.store.setNotice('模型目录服务未挂载。')
+      return
+    }
+    activeReasoningRequest?.abort()
+    const controller = new AbortController()
+    activeReasoningRequest = controller
+    options.store.setNotice(`正在读取 ${model.name} 的思考等级…`)
+    void registry.resolveReasoning(model.provider, model.model, controller.signal)
+      .then((reasoning) => {
+        if (activeReasoningRequest !== controller) return
+        if (reasoning === undefined || reasoning.efforts.length === 0) {
+          applyModelSelection(model, reasoning?.defaultEffort)
+          return
+        }
+        const snapshot = options.store.getSnapshot()
+        const currentEffort = snapshot.provider === model.provider && snapshot.model === model.model
+          ? snapshot.reasoningEffort ?? reasoning.defaultEffort
+          : reasoning.defaultEffort
+        const choices = reasoningChoices(reasoning)
+        const choicesByValue = new Map<string, (typeof choices)[number]>()
+        let selectedIndex = 0
+        const items = choices.map((choice, index) => {
+          const value = String(index)
+          choicesByValue.set(value, choice)
+          const active = choice.effort === currentEffort
+          if (active) selectedIndex = index
+          return {
+            value,
+            label: `${active ? '✓ ' : ''}${choice.label}`,
+            ...(choice.description === undefined ? {} : { description: choice.description }),
+          }
+        })
+        openCatalog(
+          '思考等级',
+          `模型：${model.name}（${model.provider}/${model.model}）\n选择后，模型与思考等级将在下一次模型请求一起生效。`,
+          items,
+          (value) => {
+            if (!choicesByValue.has(value)) {
+              options.store.setNotice('思考等级目录已更新，请重新打开 /model。')
+              return
+            }
+            applyModelSelection(model, choicesByValue.get(value)?.effort)
+          },
+          selectedIndex,
+        )
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && !stopped) {
+          options.store.setNotice(`读取思考等级失败：${error instanceof Error ? error.message : String(error)}`)
+        }
+      })
+      .finally(() => {
+        if (activeReasoningRequest === controller) activeReasoningRequest = undefined
+      })
+  }
   const openModels = (): void => {
     const registry = options.models
     if (registry === undefined) {
@@ -227,6 +394,7 @@ export function mountTui(options: MountOptions): MountedTui {
       return
     }
     activeModelPicker?.abort()
+    activeReasoningRequest?.abort()
     const controller = new AbortController()
     activeModelPicker = controller
     options.store.setNotice('正在读取可切换的模型…')
@@ -261,7 +429,7 @@ export function mountTui(options: MountOptions): MountedTui {
         const failures = catalog.failures.length === 0 ? '' : `\n\n未能读取：${catalog.failures.join('；')}`
         openCatalog(
           '模型',
-          `当前模型：${current}\n选择后会在下一次模型请求生效。${failures}`,
+          `当前模型：${current}\n选择模型后，支持时将继续选择它的思考等级。${failures}`,
           items,
           (value) => {
             const selectedModel = modelsByValue.get(value)
@@ -269,7 +437,7 @@ export function mountTui(options: MountOptions): MountedTui {
               options.store.setNotice('模型目录已更新，请重新打开 /model。')
               return
             }
-            runAction(options.actions.selectModel(selectedModel.provider, selectedModel.model), '切换模型')
+            openModelReasoning(selectedModel)
           },
           selectedIndex,
         )
@@ -281,6 +449,52 @@ export function mountTui(options: MountOptions): MountedTui {
       })
       .finally(() => {
         if (activeModelPicker === controller) activeModelPicker = undefined
+      })
+  }
+  const cycleReasoningEffort = (): void => {
+    const registry = options.models
+    const snapshot = options.store.getSnapshot()
+    if (registry === undefined) {
+      options.store.setNotice('模型目录服务未挂载。')
+      return
+    }
+    if (snapshot.provider === undefined || snapshot.model === undefined) {
+      options.store.setNotice('当前模型尚未就绪。')
+      return
+    }
+    activeReasoningRequest?.abort()
+    const controller = new AbortController()
+    activeReasoningRequest = controller
+    const { provider, model } = snapshot
+    options.store.setNotice('正在读取当前模型的思考等级…')
+    void registry.resolveReasoning(provider, model, controller.signal)
+      .then(async (reasoning) => {
+        if (stopped || controller.signal.aborted || activeReasoningRequest !== controller) return
+        if (reasoning === undefined || reasoning.efforts.length === 0) {
+          options.store.setNotice('当前模型未提供可切换的思考等级。')
+          return
+        }
+        const currentEffort = options.store.getSnapshot().reasoningEffort ?? reasoning.defaultEffort
+        const currentIndex = reasoning.efforts.findIndex((effort) => effort.id === currentEffort)
+        const next = reasoning.efforts[(currentIndex + 1) % reasoning.efforts.length]
+        if (next === undefined) return
+        await options.actions.selectModel({
+          provider,
+          model,
+          reasoningEffort: next.id,
+        })
+        if (activeReasoningRequest !== controller) return
+        if (!options.store.getSnapshot().notice?.includes('无法保存为默认模型')) {
+          options.store.setNotice(`思考等级已切换为 ${next.name}。`)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && !stopped) {
+          options.store.setNotice(`切换思考等级失败：${error instanceof Error ? error.message : String(error)}`)
+        }
+      })
+      .finally(() => {
+        if (activeReasoningRequest === controller) activeReasoningRequest = undefined
       })
   }
   const retryLastPrompt = (): void => {
@@ -331,6 +545,21 @@ export function mountTui(options: MountOptions): MountedTui {
         if (activeSlashCommand === controller) activeSlashCommand = undefined
       })
   }
+  const toggleCollaborationMode = (): void => {
+    let planAvailable: boolean
+    try {
+      planAvailable = options.commands?.list().some((command) => command.name === 'plan') ?? false
+    } catch (error) {
+      options.store.setNotice(`读取 Plan Mode 能力失败：${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    if (!planAvailable) {
+      options.store.setNotice('当前 Profile 未挂载 Plan Mode。')
+      return
+    }
+    const planActive = options.store.getSnapshot().harness.collaborationMode === 'plan'
+    dispatchRegisteredCommand(planActive ? '/plan off' : '/plan')
+  }
   const submit = (text: string): void => {
     if (text.length === 0) return
     app.prompt.input.addToHistory(text)
@@ -345,6 +574,12 @@ export function mountTui(options: MountOptions): MountedTui {
       openMcpTools()
     } else if (command === 'model') {
       openModels()
+    } else if (command === 'sandbox') {
+      const mode = sandboxModeArgument(text)
+      if (mode === undefined) openSandboxModes()
+      else if (mode === null) {
+        options.store.setNotice('用法：/sandbox [read-only|workspace-write|danger-full-access]')
+      } else applySandboxMode(mode)
     } else if (command === 'clear' || command === 'new') {
       runAction(options.actions.newSession(), command === 'clear' ? '/clear' : '/new', refreshSlashCommands)
     } else if (command === 'retry') {
@@ -438,6 +673,8 @@ export function mountTui(options: MountOptions): MountedTui {
       cancel: () => options.actions.cancel(),
       cancelCommand: () => activeSlashCommand?.abort(),
       toggleReasoning: () => options.store.toggleReasoningVisibility(),
+      cycleReasoningEffort,
+      toggleCollaborationMode,
       exit: () => {
         runAction(options.actions.shutdown(), '退出')
       },
@@ -466,6 +703,8 @@ export function mountTui(options: MountOptions): MountedTui {
       activeSkillAutocomplete?.abort()
       activeSkillPicker?.abort()
       activeModelPicker?.abort()
+      activeReasoningRequest?.abort()
+      activeReasoningRequest = undefined
       removeInputListener()
       removeOverlayStoreListener()
       removeInteractionListener?.()

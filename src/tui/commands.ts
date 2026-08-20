@@ -38,12 +38,27 @@ export interface McpToolRegistry {
   list(): readonly McpTool[]
 }
 
+const SANDBOX_MODE_AUTOCOMPLETE_ITEMS = [
+  { value: 'read-only', label: 'read-only', description: 'Read Only' },
+  { value: 'workspace-write', label: 'workspace-write', description: 'Write' },
+  { value: 'danger-full-access', label: 'danger-full-access', description: 'Full Access' },
+] as const
+
 export const SLASH_COMMAND_AUTOCOMPLETE_ITEMS = [
   { name: 'help', description: '显示命令和快捷键' },
   { name: 'tools', description: '打开工具详情浏览器' },
   { name: 'skills', description: '浏览并选择可由用户调用的技能' },
   { name: 'mcp', description: '浏览已连接的 MCP 工具' },
-  { name: 'model', description: '显示并切换当前 Agent 可用的模型' },
+  { name: 'model', description: '显示并切换当前 Agent 的模型与思考等级' },
+  {
+    name: 'sandbox',
+    description: '显示并切换当前 Session 的 Sandbox Mode',
+    argumentHint: '[mode]',
+    getArgumentCompletions: (prefix: string) => {
+      const normalized = prefix.trim().toLowerCase()
+      return SANDBOX_MODE_AUTOCOMPLETE_ITEMS.filter((item) => item.value.startsWith(normalized))
+    },
+  },
   { name: 'clear', description: '创建新会话（保留输入历史）' },
   { name: 'new', description: '创建新会话（/clear 的别名）' },
   { name: 'retry', description: '重新发送上一条用户任务' },
@@ -103,8 +118,9 @@ export function formatHelpText(commands: readonly AutocompleteSlashCommand[]): s
       return `/${command.name}${input}  ${command.description ?? ''}`.trimEnd()
     }),
     '',
-    'Enter 提交 · Shift/Alt+Enter 换行 · Ctrl+T 切换思考过程 · Ctrl+C 取消/双击退出',
-    'Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭弹窗/取消命令/取消运行 · ↑/↓ 历史',
+    'Enter 提交 · Shift/Alt+Enter 换行 · Shift+Tab 切换 Normal/Plan',
+    'Ctrl+T 切换思考过程 · Ctrl+R 切换思考等级',
+    'Ctrl+C/Ctrl+D 双击退出 · Ctrl+O 工具详情 · Esc 关闭弹窗/取消命令/取消运行 · ↑/↓ 历史',
   ].join('\n')
 }
 
@@ -117,6 +133,8 @@ export interface InputContext {
   cancel(): void
   cancelCommand(): void
   toggleReasoning(): boolean
+  cycleReasoningEffort(): void
+  toggleCollaborationMode(): void
   exit(): void
   openTools(): void
   closeOverlay(): void
@@ -138,6 +156,11 @@ export class InputPolicy {
       return { consume: true }
     }
     if (context.overlayOpen) return undefined
+    if (matchesKey(data, Key.shift(Key.tab))) {
+      context.toggleCollaborationMode()
+      this.reset()
+      return { consume: true }
+    }
     if (matchesKey(data, Key.escape) && context.commandRunning) {
       context.cancelCommand()
       this.reset()
@@ -150,6 +173,11 @@ export class InputPolicy {
     }
     if (matchesKey(data, Key.ctrl('t'))) {
       context.toggleReasoning()
+      this.reset()
+      return { consume: true }
+    }
+    if (matchesKey(data, Key.ctrl('r'))) {
+      context.cycleReasoningEffort()
       this.reset()
       return { consume: true }
     }
