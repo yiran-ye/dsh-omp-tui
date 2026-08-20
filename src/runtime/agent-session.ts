@@ -57,12 +57,16 @@ export class AgentSessionBinding {
     private readonly agent: RuntimeAgent,
     private readonly store: TuiStore,
     source: RuntimeEventSource,
+    private readonly onSessionChanged?: () => void,
   ) {
     this.unsubscribers.push(
       source.onSessionEvent((session, event) => {
         if (session !== this.agent.session) return
         if (this.replaying) this.pending.push(event)
-        else this.store.appendEvent(event)
+        else {
+          this.store.appendEvent(event)
+          this.onSessionChanged?.()
+        }
       }),
       source.onAgentStatus((agent, status) => {
         if (agent === this.agent) this.store.setStatus(status)
@@ -79,6 +83,7 @@ export class AgentSessionBinding {
     this.pending.length = 0
     this.store.setStatus(this.agent.status)
     this.resnapshotInbox()
+    this.onSessionChanged?.()
   }
 
   disconnect(): void {

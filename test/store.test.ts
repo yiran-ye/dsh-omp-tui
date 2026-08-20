@@ -58,6 +58,27 @@ describe('TuiStore 与 AgentSessionBinding', () => {
     })
   })
 
+  it('新会话重置时保留 StatusLine 运行时状态', () => {
+    const store = new TuiStore()
+    store.setStatusLine({
+      cwd: '/repo',
+      modelName: 'GPT-5.6-Luna',
+      contextTokens: 15_000,
+      contextWindow: 1_000_000,
+      compactionAvailable: true,
+    })
+
+    store.reset()
+
+    expect(store.getSnapshot().statusLine).toEqual({
+      cwd: '/repo',
+      modelName: 'GPT-5.6-Luna',
+      contextTokens: 15_000,
+      contextWindow: 1_000_000,
+      compactionAvailable: true,
+    })
+  })
+
   it('绑定 Session、Agent status 和 inbox，并可解除监听', () => {
     const source = new EventSource()
     const session = Session.create(SessionId('session-store-test'))

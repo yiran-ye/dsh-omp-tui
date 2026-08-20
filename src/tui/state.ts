@@ -113,6 +113,22 @@ export interface RecentSessionsState {
   readonly items: readonly RecentSessionSummary[]
 }
 
+/**
+ * Runtime facts rendered in the OMP-style prompt status line.
+ *
+ * Provider identity deliberately stays out of this shape: it is needed by the
+ * model picker, but is not part of the human-facing status-line identity.
+ */
+export interface StatusLineState {
+  readonly cwd?: string
+  readonly modelName?: string
+  readonly reasoningEffort?: string
+  readonly gitBranch?: string
+  readonly contextTokens?: number
+  readonly contextWindow?: number
+  readonly compactionAvailable: boolean
+}
+
 export interface TuiSnapshot {
   readonly lastSeq: number
   readonly transcript: readonly TranscriptEntry[]
@@ -130,6 +146,7 @@ export interface TuiSnapshot {
   readonly lifecycle: TuiLifecycle
   readonly capabilities: CapabilityState
   readonly recentSessions: RecentSessionsState
+  readonly statusLine: StatusLineState
 }
 
 export const DEFAULT_CAPABILITIES: CapabilityState = {
@@ -160,5 +177,6 @@ export function createInitialSnapshot(): TuiSnapshot {
     lifecycle: 'active',
     capabilities: DEFAULT_CAPABILITIES,
     recentSessions: { status: 'unavailable', items: [] },
+    statusLine: { compactionAvailable: false },
   }
 }

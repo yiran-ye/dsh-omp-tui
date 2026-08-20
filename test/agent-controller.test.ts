@@ -11,6 +11,7 @@ import {
   type ControlledAgentHandle,
 } from '../src/runtime/agent-controller.js'
 import type { RuntimeAgent, RuntimeEventSource } from '../src/runtime/agent-session.js'
+import type { StatusLineRuntimePort } from '../src/runtime/status-line-runtime.js'
 import type { SessionEventLike } from '../src/tui/state.js'
 
 class NoopEvents implements RuntimeEventSource {
@@ -75,7 +76,7 @@ class FakeAgent implements ControlledAgent {
   }
 }
 
-function harness() {
+function harness(statusLine?: StatusLineRuntimePort) {
   const created: CreateAgentOptions[] = []
   const resumed: ResumeAgentOptions[] = []
   const agents: FakeAgent[] = []
@@ -109,6 +110,7 @@ function harness() {
     defaultModel: { currentSelection: () => selection, saveSelection },
     eventSource: new NoopEvents(),
     cwd: '/workspace',
+    ...(statusLine === undefined ? {} : { statusLine }),
     stopUi,
     requestExit,
   })
@@ -159,6 +161,36 @@ describe('AgentController', () => {
 
     await controller.newSession()
     expect(created[1]?.agentOptions).toEqual({ provider: 'openai', model: 'gpt-5.4' })
+  })
+
+  it('将会话、模型选择和关闭生命周期同步给 StatusLine', async () => {
+    const setSession = vi.fn()
+    const detachSession = vi.fn()
+    const setSelection = vi.fn()
+    const syncContext = vi.fn()
+    const dispose = vi.fn()
+    const statusLine: StatusLineRuntimePort = {
+      setSession,
+      detachSession,
+      setSelection,
+      syncContext,
+      dispose,
+    }
+    const { controller } = harness(statusLine)
+
+    const agent = await controller.start()
+    expect(setSession).toHaveBeenCalledWith(agent.session, {
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+    })
+    expect(syncContext).toHaveBeenCalledOnce()
+
+    await controller.selectModel('openai', 'gpt-5.6-luna')
+    expect(setSelection).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-5.6-luna' })
+
+    await controller.shutdown()
+    expect(detachSession).toHaveBeenCalledWith(agent.session)
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   it('shutdown 只执行一次，并按 flush、停止 UI、dispose、appExit 收敛', async () => {

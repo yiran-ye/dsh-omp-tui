@@ -105,8 +105,8 @@ Overlay API 构成界面。
 不使用 Bun-only 的 `@oh-my-pi/pi-tui`。
 
 终端颜色由 `getCapabilities().trueColor` 和 `TERM` 共同选择 True Color、ANSI 256 或
-ANSI 16。布局与图标只使用普通 Unicode，不依赖 Nerd Font。当前仅提供深色语义主题；
-静态 Logo 渐变不会启动定时器或动画。
+ANSI 16。除 OMP 风格 StatusLine 的模型、目录、Git、上下文图标外，布局使用普通 Unicode；
+状态栏需要 Nerd Font。当前仅提供深色语义主题；静态 Logo 渐变不会启动定时器或动画。
 
 ## 调研来源
 

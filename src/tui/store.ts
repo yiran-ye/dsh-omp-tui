@@ -6,6 +6,7 @@ import {
   type OverlayState,
   type RecentSessionsState,
   type SessionEventLike,
+  type StatusLineState,
   type TuiSnapshot,
 } from './state.js'
 
@@ -35,6 +36,7 @@ export class TuiStore {
       capabilities: this.snapshot.capabilities,
       notice: this.snapshot.notice,
       recentSessions: this.snapshot.recentSessions,
+      statusLine: this.snapshot.statusLine,
     }
     for (const event of events) this.snapshot = reduceSessionEvent(this.snapshot, event)
     this.emit()
@@ -60,6 +62,10 @@ export class TuiStore {
 
   setSession(sessionId: string, provider: string | undefined, model: string | undefined): void {
     this.patch({ sessionId, provider, model })
+  }
+
+  setStatusLine(statusLine: StatusLineState): void {
+    this.patch({ statusLine })
   }
 
   beginClosing(): void {

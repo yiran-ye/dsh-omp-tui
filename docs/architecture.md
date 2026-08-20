@@ -111,4 +111,5 @@ protocol，恢复 raw mode 与光标；`ProcessSafety` 覆盖 SIGINT/SIGTERM/SIG
 
 主题使用语义色角色而不是组件内硬编码 ANSI：True Color 不可用时依次降级到 ANSI
 256 与 ANSI 16。欢迎页渐变是纯渲染函数，不创建动画或计时器；StatusLine 作为输入框
-上边框内容按宽度逐级省略，只渲染真实存在的 Harness 状态。
+上边框内容按宽度逐级省略，只渲染真实存在的 Harness 状态。状态栏采用 OMP 的 Nerd Font
+图标（模型、推理强度、目录、Git、上下文与压缩能力）；终端应配置兼容字体以获得完整图形。

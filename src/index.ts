@@ -24,8 +24,10 @@ import { InteractionQueue } from './runtime/interaction-queue.js'
 import { createModelCatalog } from './runtime/model-catalog.js'
 import { createRecentSessionCatalog } from './runtime/recent-sessions.js'
 import { formatResumeHint, resolveLaunchProfile } from './runtime/resume-hint.js'
+import { StatusLineRuntime } from './runtime/status-line-runtime.js'
 import { ProcessSafety, assertInteractiveTerminal } from './runtime/terminal-restore.js'
 import { mountTui, type MountedTui } from './tui/mount.js'
+import { TuiStore } from './tui/store.js'
 
 export const name = 'omp-tui'
 export const inject = ['agentDefaultModel', 'agents', 'sessions']
@@ -57,6 +59,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
   let removeToolChangeListener: (() => void) | undefined
   let recentSessionsAbort: AbortController | undefined
   let refreshRecentSessions: (() => Promise<void>) | undefined
+  let statusLine: StatusLineRuntime | undefined
   const launchProfile = resolveLaunchProfile()
   let resumeHintPrinted = false
 
@@ -78,6 +81,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     removeSkillChangeListener?.()
     removeToolChangeListener?.()
     recentSessionsAbort?.abort()
+    statusLine?.dispose()
     interactionInstallation?.dispose()
     mounted?.stop()
     void controller?.shutdown().catch(report)
@@ -91,14 +95,26 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
     const commands = ctx.get('commands')
     const skills = ctx.get('skills')
     const sessionQuery = ctx.get('sessionQuery')
+    const tokenMeter = ctx.get('tokenMeter')
+    const compactionAvailable = ctx.get('compaction') !== undefined
+    const cwd = process.cwd()
     interactions = new InteractionQueue()
+    const store = new TuiStore()
+    statusLine = new StatusLineRuntime(store, {
+      cwd,
+      compactionAvailable,
+      ...(llm === undefined ? {} : { llm }),
+      ...(tokenMeter === undefined ? {} : { tokenMeter }),
+    })
     controller = new AgentController({
       agents: ctx.agents,
       sessions: ctx.sessions,
       defaultModel: ctx.agentDefaultModel,
       ...(presets === undefined ? {} : { presets }),
       eventSource: createCordisEventSource(ctx),
-      cwd: process.cwd(),
+      cwd,
+      store,
+      statusLine,
       stopUi: () => {
         try {
           mounted?.stop()
@@ -114,7 +130,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
       approval: interactionInstallation.approvalAvailable,
       userQuestions: interactionInstallation.userQuestionsAvailable,
       permissionPresets: ctx.get('permissionPresets') !== undefined,
-      compaction: ctx.get('compaction') !== undefined,
+      compaction: compactionAvailable,
       sessionProjections: ctx.get('sessionProjections') !== undefined,
       agentPresets: presets !== undefined,
     })
@@ -250,6 +266,7 @@ export function apply(ctx: Context, config: OmpTuiConfig): void {
 
   void run().catch(async (error: unknown) => {
     report(error)
+    statusLine?.dispose()
     processSafety?.dispose()
     interactionInstallation?.dispose()
     mounted?.stop()

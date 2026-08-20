@@ -12,6 +12,7 @@ import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 import { createSessionId, normalizeSessionId } from '../session-id.js'
 import { TuiStore } from '../tui/store.js'
 import { AgentSessionBinding, type RuntimeAgent, type RuntimeEventSource } from './agent-session.js'
+import type { StatusLineRuntimePort } from './status-line-runtime.js'
 
 export interface ControlledAgent extends RuntimeAgent {
   readonly id: string
@@ -54,6 +55,7 @@ export interface AgentControllerOptions {
   readonly eventSource: RuntimeEventSource
   readonly cwd: string
   readonly store?: TuiStore
+  readonly statusLine?: StatusLineRuntimePort
   readonly ready?: () => Promise<void>
   readonly stopUi?: () => void | Promise<void>
   readonly requestExit?: (code: number) => void
@@ -131,6 +133,7 @@ export class AgentController {
       selectionRef.current = selection
       this.selectedModelOverride = selection
       this.store.setSession(handle.agent.id, selection.provider, selection.model)
+      this.options.statusLine?.setSelection(selection)
       try {
         await this.options.defaultModel.saveSelection?.(selection)
       } catch (error) {
@@ -215,8 +218,14 @@ export class AgentController {
     this.handle = handle
     this.modelSelection = selectionRef
     await handle.agent.whenIdle()
-    this.binding = new AgentSessionBinding(handle.agent, this.store, this.options.eventSource)
+    this.binding = new AgentSessionBinding(
+      handle.agent,
+      this.store,
+      this.options.eventSource,
+      () => this.options.statusLine?.syncContext(),
+    )
     this.store.setSession(handle.agent.id, selection.provider, selection.model)
+    this.options.statusLine?.setSession(handle.agent.session, selection)
     return handle.agent
   }
 
@@ -231,6 +240,7 @@ export class AgentController {
       if (stopUi) await this.options.stopUi?.()
       return
     }
+    this.options.statusLine?.detachSession(handle.agent.session)
     const errors: unknown[] = []
     if (handle.agent.status === 'running') handle.agent.cancel({ kind: 'user' })
     try {
@@ -266,6 +276,7 @@ export class AgentController {
     } catch (cause) {
       error = cause
     } finally {
+      this.options.statusLine?.dispose()
       this.options.requestExit?.(error === undefined ? code : 1)
     }
     if (error instanceof Error) throw error
