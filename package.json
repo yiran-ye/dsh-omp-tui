@@ -1,6 +1,6 @@
 {
   "name": "dsh-omp-tui",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DeepSeek Harness native OMP-style terminal mode bundle",
   "type": "module",
   "license": "MIT",
