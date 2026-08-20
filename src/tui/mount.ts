@@ -9,6 +9,7 @@ import type {
 } from '../runtime/model-catalog.js'
 import type { ToolLookup } from '../runtime/tool-presentation.js'
 import { ToolPresenter } from '../runtime/tool-presentation.js'
+import { CompatibleTerminal } from '../runtime/terminal-compatibility.js'
 import { TerminalRestore, assertInteractiveTerminal } from '../runtime/terminal-restore.js'
 import type { TuiStore } from './store.js'
 import {
@@ -98,7 +99,7 @@ export interface MountedTui {
 
 export function mountTui(options: MountOptions): MountedTui {
   if (options.requireTty !== false && options.terminal === undefined) assertInteractiveTerminal()
-  const terminal = options.terminal ?? new ProcessTerminal()
+  const terminal = new CompatibleTerminal(options.terminal ?? new ProcessTerminal())
   const tui = new TuiAltScreen(terminal, true, undefined, { wheelScrollLines: 3 })
   const presenter = new ToolPresenter(options.tools, options.maxToolLines ?? 8)
   const policy = new InputPolicy()

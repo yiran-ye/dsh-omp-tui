@@ -282,6 +282,19 @@ describe('OMP 风格渲染', () => {
         '正在思考：分析中，正在添加计时器',
       )
 
+      const replyingStore = new TuiStore([
+        {
+          type: 'assistant/chunk',
+          seq: 0,
+          time: 0,
+          data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: '正在整理最终结果' } },
+        },
+      ])
+      replyingStore.setStatus('running')
+      expect(resolveWorkingActivity(replyingStore.getSnapshot(), new ToolPresenter(undefined))).toBe(
+        '正在整理最终结果',
+      )
+
       const betweenStepsStore = new TuiStore([
         { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
         { type: 'step/start', seq: 1, time: 1, data: { turn: 1, step: 1 } },

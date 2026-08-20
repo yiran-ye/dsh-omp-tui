@@ -66,6 +66,31 @@ describe('备用屏挂载', () => {
     expect(stripTerminalSequences(terminal.output)).toContain('正在关闭会话…')
   })
 
+  it('输入重绘不会向 Orca 终端宿主发送 BEL', () => {
+    const terminal = new MemoryTerminal()
+    const mounted = mountTui({
+      store: new TuiStore(),
+      terminal,
+      requireTty: false,
+      actions: {
+        send: vi.fn<(text: string) => void>(),
+        cancel: vi.fn<() => void>(),
+        selectModel: async () => undefined,
+        newSession: async () => undefined,
+        shutdown: async () => undefined,
+      },
+    })
+
+    mounted.tui.renderNow(true)
+    terminal.output = ''
+    terminal.input('x')
+    mounted.tui.renderNow()
+
+    expect(terminal.output).not.toContain('\u0007')
+    expect(terminal.output).toContain('\u001b]8;;\u001b\\')
+    mounted.stop()
+  })
+
   it('显式主滚动容器保持向上滚动能力', () => {
     const terminal = new MemoryTerminal()
     terminal.rows = 8

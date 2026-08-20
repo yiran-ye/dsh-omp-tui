@@ -118,7 +118,7 @@ export function resolveWorkingActivity(snapshot: TuiSnapshot, tools: ToolPresent
       return phrase === undefined ? '正在思考' : `正在思考：${phrase}`
     }
     const phrase = latestGeneratedPhrase(tail?.text ?? assistant.text)
-    return phrase === undefined ? '正在生成回复' : `正在回复：${phrase}`
+    return phrase ?? '正在生成回复'
   }
 
   return '正在等待模型响应'
